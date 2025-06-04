@@ -5,6 +5,7 @@
 
 #include "types.hpp"
 #include <array>
+#include <cctype>
 #include <string_view>
 #include <variant>
 
@@ -18,7 +19,7 @@ namespace yaml::ct::detail
         constexpr explicit lexer(std::string_view yaml) noexcept
             : input_{yaml} {}
 
-        constexpr auto tokenize() noexcept -> std::variant<token_array<MaxTokens>, error_code>
+        constexpr auto tokenize() noexcept -> std::variant<token_array<MaxTokens>, yaml::ct::error_code>
         {
             token_array<MaxTokens> tokens{};
             std::size_t token_count = 0;
@@ -31,9 +32,9 @@ namespace yaml::ct::detail
                     break;
 
                 auto token_result = next_token();
-                if (std::holds_alternative<error_code>(token_result))
+                if (std::holds_alternative<yaml::ct::error_code>(token_result))
                 {
-                    return std::get<error_code>(token_result);
+                    return std::get<yaml::ct::error_code>(token_result);
                 }
 
                 tokens[token_count++] = std::get<token>(token_result);
@@ -107,7 +108,7 @@ namespace yaml::ct::detail
             }
         }
 
-        constexpr auto next_token() noexcept -> std::variant<token, error_code>
+        constexpr auto next_token() noexcept -> std::variant<token, yaml::ct::error_code>
         {
             char c = peek();
             std::size_t start_line = line_;
@@ -202,10 +203,10 @@ namespace yaml::ct::detail
                 break;
             }
 
-            return error_code::unexpected_token;
+            return yaml::ct::error_code::unexpected_token;
         }
 
-        constexpr auto parse_quoted_string(char quote) noexcept -> std::variant<token, error_code>
+        constexpr auto parse_quoted_string(char quote) noexcept -> std::variant<token, yaml::ct::error_code>
         {
             std::size_t start_line = line_;
             std::size_t start_column = column_;
@@ -229,7 +230,7 @@ namespace yaml::ct::detail
 
             if (at_end())
             {
-                return error_code::unterminated_string;
+                return yaml::ct::error_code::unterminated_string;
             }
 
             advance(); // skip closing quote
@@ -238,7 +239,7 @@ namespace yaml::ct::detail
             return token{token_type::quoted_string, value, start_line, start_column};
         }
 
-        constexpr auto parse_number() noexcept -> std::variant<token, error_code>
+        constexpr auto parse_number() noexcept -> std::variant<token, yaml::ct::error_code>
         {
             std::size_t start_line = line_;
             std::size_t start_column = column_;
@@ -289,7 +290,7 @@ namespace yaml::ct::detail
             return token{type, value, start_line, start_column};
         }
 
-        constexpr auto parse_identifier() noexcept -> std::variant<token, error_code>
+        constexpr auto parse_identifier() noexcept -> std::variant<token, yaml::ct::error_code>
         {
             std::size_t start_line = line_;
             std::size_t start_column = column_;
@@ -315,7 +316,7 @@ namespace yaml::ct::detail
             return token{token_type::string_literal, value, start_line, start_column};
         }
 
-        constexpr auto parse_anchor() noexcept -> std::variant<token, error_code>
+        constexpr auto parse_anchor() noexcept -> std::variant<token, yaml::ct::error_code>
         {
             std::size_t start_line = line_;
             std::size_t start_column = column_;
@@ -332,7 +333,7 @@ namespace yaml::ct::detail
             return token{token_type::anchor, value, start_line, start_column};
         }
 
-        constexpr auto parse_alias() noexcept -> std::variant<token, error_code>
+        constexpr auto parse_alias() noexcept -> std::variant<token, yaml::ct::error_code>
         {
             std::size_t start_line = line_;
             std::size_t start_column = column_;
@@ -349,7 +350,7 @@ namespace yaml::ct::detail
             return token{token_type::alias, value, start_line, start_column};
         }
 
-        constexpr auto parse_tag() noexcept -> std::variant<token, error_code>
+        constexpr auto parse_tag() noexcept -> std::variant<token, yaml::ct::error_code>
         {
             std::size_t start_line = line_;
             std::size_t start_column = column_;

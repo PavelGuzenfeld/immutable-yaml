@@ -2,7 +2,7 @@
 // what happens when your yaml is fucking garbage
 
 #include <iostream>
-#include "yaml/yaml.hpp"
+#include <yaml/yaml.hpp> // fixed your fucking include path
 
 int main()
 {

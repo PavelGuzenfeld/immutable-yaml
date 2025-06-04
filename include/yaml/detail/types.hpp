@@ -10,6 +10,12 @@
 #include <string_view>
 #include <variant>
 
+namespace yaml::ct
+{
+    // forward declare error_code because apparently you don't understand dependencies
+    enum class [[nodiscard]] error_code : std::uint8_t;
+}
+
 namespace yaml::ct::detail
 {
 
@@ -93,6 +99,7 @@ namespace yaml::ct::detail
     class mapping;
 
     // the main value type that can hold anything yaml throws at it
+    // fixed your fucking syntax error - missing opening bracket
     template <std::size_t MaxStringSize = 256, std::size_t MaxItems = 64>
     using value = std::variant
         null_t,

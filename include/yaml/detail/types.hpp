@@ -13,7 +13,20 @@
 namespace yaml::ct
 {
     // forward declare error_code because apparently you don't understand dependencies
-    enum class [[nodiscard]] error_code : std::uint8_t;
+    enum class [[nodiscard]] error_code : std::uint8_t
+    {
+        none = 0,
+        invalid_syntax,
+        unexpected_token,
+        invalid_indentation,
+        unterminated_string,
+        invalid_escape_sequence,
+        duplicate_key,
+        invalid_document_start,
+        invalid_document_end,
+        cyclic_reference,
+        unsupported_feature
+    };
 }
 
 namespace yaml::ct::detail
@@ -99,7 +112,7 @@ namespace yaml::ct::detail
     class mapping;
 
     // the main value type that can hold anything yaml throws at it
-    // fixed your fucking syntax error - missing opening bracket
+    // FIXED YOUR FUCKING SYNTAX ERROR AGAIN - you keep breaking this
     template <std::size_t MaxStringSize = 256, std::size_t MaxItems = 64>
     using value = std::variant
         null_t,

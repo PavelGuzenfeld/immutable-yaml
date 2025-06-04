@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <optional>
 #include <string_view>
+#include <utility>
 #include <variant>
 
 namespace yaml::ct
@@ -112,9 +113,8 @@ namespace yaml::ct::detail
     class mapping;
 
     // the main value type that can hold anything yaml throws at it
-    // FIXED YOUR FUCKING SYNTAX ERROR AGAIN - you keep breaking this
     template <std::size_t MaxStringSize = 256, std::size_t MaxItems = 64>
-    using value = std::variant
+    using value = std::variant<
         null_t,
           boolean,
           integer,

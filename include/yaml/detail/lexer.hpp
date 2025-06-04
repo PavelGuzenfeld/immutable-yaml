@@ -89,7 +89,7 @@ namespace yaml::ct::detail
             {
                 char c = peek();
 
-                if (c == ' ' || c == '\t')
+                if (c == ' ' || c == '\t' || c == '\n')
                 {
                     advance();
                 }

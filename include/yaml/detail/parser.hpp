@@ -26,6 +26,14 @@ namespace yaml::ct::detail
                 advance();
             }
 
+            // Check for invalid start tokens
+            if (current_token().type_ == token_type::mapping_key ||
+                current_token().type_ == token_type::sequence_end ||
+                current_token().type_ == token_type::mapping_end)
+            {
+                return yaml::ct::error_code::unexpected_token;
+            }
+
             auto value_result = parse_value();
             if (std::holds_alternative<yaml::ct::error_code>(value_result))
             {
@@ -82,9 +90,19 @@ namespace yaml::ct::detail
             case token_type::sequence_entry:
                 return parse_block_sequence();
 
+            case token_type::mapping_key:
+                // Missing key before colon
+                return yaml::ct::error_code::unexpected_token;
+
             default:
                 // try to parse as block mapping
-                return parse_block_mapping();
+                if (tok.type_ == token_type::string_literal ||
+                    tok.type_ == token_type::quoted_string)
+                {
+                    return parse_block_mapping();
+                }
+                // No valid value found
+                return yaml::ct::error_code::unexpected_token;
             }
         }
 
@@ -196,10 +214,29 @@ namespace yaml::ct::detail
             advance(); // skip [
 
             sequence_impl seq{};
+            bool expect_value = true;
 
             while (current_token().type_ != token_type::sequence_end &&
                    current_token().type_ != token_type::eof)
             {
+                if (current_token().type_ == token_type::string_literal &&
+                    current_token().value_ == ",")
+                {
+                    if (expect_value)
+                    {
+                        // Missing value before comma
+                        return yaml::ct::error_code::unexpected_token;
+                    }
+                    advance(); // skip comma
+                    expect_value = true;
+                    continue;
+                }
+
+                if (!expect_value)
+                {
+                    // Expected comma but got value
+                    return yaml::ct::error_code::unexpected_token;
+                }
 
                 auto value_result = parse_value();
                 if (std::holds_alternative<yaml::ct::error_code>(value_result))
@@ -212,12 +249,13 @@ namespace yaml::ct::detail
                     return yaml::ct::error_code::invalid_syntax; // sequence full
                 }
 
-                // handle comma separation (simplified)
-                if (current_token().type_ == token_type::string_literal &&
-                    current_token().value_ == ",")
-                {
-                    advance();
-                }
+                expect_value = false;
+            }
+
+            if (expect_value && seq.size() > 0)
+            {
+                // Trailing comma
+                return yaml::ct::error_code::unexpected_token;
             }
 
             if (current_token().type_ == token_type::sequence_end)
@@ -225,7 +263,8 @@ namespace yaml::ct::detail
                 advance(); // skip ]
             }
 
-            return seq;
+            // Wrap in yaml_container when returning
+            return yaml_container{std::move(seq)};
         }
 
         constexpr auto parse_flow_mapping() noexcept -> std::variant<yaml_value, yaml::ct::error_code>
@@ -233,10 +272,29 @@ namespace yaml::ct::detail
             advance(); // skip {
 
             mapping_impl map{};
+            bool expect_key = true;
 
             while (current_token().type_ != token_type::mapping_end &&
                    current_token().type_ != token_type::eof)
             {
+                if (current_token().type_ == token_type::string_literal &&
+                    current_token().value_ == ",")
+                {
+                    if (expect_key)
+                    {
+                        // Missing key-value pair before comma
+                        return yaml::ct::error_code::unexpected_token;
+                    }
+                    advance(); // skip comma
+                    expect_key = true;
+                    continue;
+                }
+
+                if (!expect_key)
+                {
+                    // Expected comma but got key
+                    return yaml::ct::error_code::unexpected_token;
+                }
 
                 // parse key
                 auto key_result = parse_string();
@@ -266,12 +324,13 @@ namespace yaml::ct::detail
                     return yaml::ct::error_code::duplicate_key;
                 }
 
-                // handle comma separation (simplified)
-                if (current_token().type_ == token_type::string_literal &&
-                    current_token().value_ == ",")
-                {
-                    advance();
-                }
+                expect_key = false;
+            }
+
+            if (expect_key && map.size() > 0)
+            {
+                // Trailing comma
+                return yaml::ct::error_code::unexpected_token;
             }
 
             if (current_token().type_ == token_type::mapping_end)
@@ -279,7 +338,8 @@ namespace yaml::ct::detail
                 advance(); // skip }
             }
 
-            return map;
+            // Wrap in yaml_container when returning
+            return yaml_container{std::move(map)};
         }
 
         constexpr auto parse_block_sequence() noexcept -> std::variant<yaml_value, yaml::ct::error_code>
@@ -302,7 +362,8 @@ namespace yaml::ct::detail
                 }
             }
 
-            return seq;
+            // Wrap in yaml_container when returning
+            return yaml_container{std::move(seq)};
         }
 
         constexpr auto parse_block_mapping() noexcept -> std::variant<yaml_value, yaml::ct::error_code>
@@ -342,7 +403,8 @@ namespace yaml::ct::detail
                 }
             }
 
-            return map;
+            // Wrap in yaml_container when returning
+            return yaml_container{std::move(map)};
         }
 
         const token_array<MaxTokens> &tokens_;

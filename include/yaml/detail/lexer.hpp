@@ -16,22 +16,30 @@ namespace yaml::ct::detail
     class lexer
     {
     public:
-        constexpr explicit lexer(std::string_view yaml) noexcept
-            : input_{yaml} {}
+        struct state
+        {
+            std::size_t position{0};
+            std::size_t line{1};
+            std::size_t column{1};
+        };
 
-        constexpr auto tokenize() noexcept -> std::variant<token_array<MaxTokens>, yaml::ct::error_code>
+        constexpr lexer() noexcept = default;
+
+        // Changed: tokenize now takes the string directly instead of storing it
+        constexpr auto tokenize(std::string_view input) noexcept -> std::variant<token_array<MaxTokens>, yaml::ct::error_code>
         {
             token_array<MaxTokens> tokens{};
             std::size_t token_count = 0;
+            state s{};
 
-            while (!at_end() && token_count < MaxTokens)
+            while (!at_end(input, s) && token_count < MaxTokens)
             {
-                skip_whitespace_and_comments();
+                skip_whitespace_and_comments(input, s);
 
-                if (at_end())
+                if (at_end(input, s))
                     break;
 
-                auto token_result = next_token();
+                auto token_result = next_token(input, s);
                 if (std::holds_alternative<yaml::ct::error_code>(token_result))
                 {
                     return std::get<yaml::ct::error_code>(token_result);
@@ -43,62 +51,62 @@ namespace yaml::ct::detail
             // add eof token because we're civilized
             if (token_count < MaxTokens)
             {
-                tokens[token_count] = token{token_type::eof, {}, line_, column_};
+                tokens[token_count] = token{token_type::eof, {}, s.line, s.column};
             }
 
             return tokens;
         }
 
     private:
-        constexpr auto at_end() const noexcept -> bool
+        static constexpr auto at_end(std::string_view input, const state &s) noexcept -> bool
         {
-            return position_ >= input_.size();
+            return s.position >= input.size();
         }
 
-        constexpr auto peek() const noexcept -> char
+        static constexpr auto peek(std::string_view input, const state &s) noexcept -> char
         {
-            return at_end() ? '\0' : input_[position_];
+            return at_end(input, s) ? '\0' : input[s.position];
         }
 
-        constexpr auto peek_next() const noexcept -> char
+        static constexpr auto peek_next(std::string_view input, const state &s) noexcept -> char
         {
-            return (position_ + 1 >= input_.size()) ? '\0' : input_[position_ + 1];
+            return (s.position + 1 >= input.size()) ? '\0' : input[s.position + 1];
         }
 
-        constexpr auto advance() noexcept -> char
+        static constexpr auto advance(std::string_view input, state &s) noexcept -> char
         {
-            if (at_end())
+            if (at_end(input, s))
                 return '\0';
 
-            char c = input_[position_++];
+            char c = input[s.position++];
             if (c == '\n')
             {
-                ++line_;
-                column_ = 1;
+                ++s.line;
+                s.column = 1;
             }
             else
             {
-                ++column_;
+                ++s.column;
             }
             return c;
         }
 
-        constexpr auto skip_whitespace_and_comments() noexcept -> void
+        static constexpr auto skip_whitespace_and_comments(std::string_view input, state &s) noexcept -> void
         {
-            while (!at_end())
+            while (!at_end(input, s))
             {
-                char c = peek();
+                char c = peek(input, s);
 
                 if (c == ' ' || c == '\t' || c == '\n')
                 {
-                    advance();
+                    advance(input, s);
                 }
                 else if (c == '#')
                 {
                     // skip comment to end of line
-                    while (!at_end() && peek() != '\n')
+                    while (!at_end(input, s) && peek(input, s) != '\n')
                     {
-                        advance();
+                        advance(input, s);
                     }
                 }
                 else
@@ -108,97 +116,101 @@ namespace yaml::ct::detail
             }
         }
 
-        constexpr auto next_token() noexcept -> std::variant<token, yaml::ct::error_code>
+        static constexpr auto next_token(std::string_view input, state &s) noexcept -> std::variant<token, yaml::ct::error_code>
         {
-            char c = peek();
-            std::size_t start_line = line_;
-            std::size_t start_column = column_;
+            char c = peek(input, s);
+            std::size_t start_line = s.line;
+            std::size_t start_column = s.column;
 
             switch (c)
             {
             case '\n':
-                advance();
+                advance(input, s);
                 return token{token_type::newline, "\n", start_line, start_column};
 
             case '-':
-                if (peek_next() == '-' && position_ + 2 < input_.size() && input_[position_ + 2] == '-')
+                if (peek_next(input, s) == '-' && s.position + 2 < input.size() && input[s.position + 2] == '-')
                 {
                     // document start
-                    advance();
-                    advance();
-                    advance();
+                    advance(input, s);
+                    advance(input, s);
+                    advance(input, s);
                     return token{token_type::document_start, "---", start_line, start_column};
                 }
-                else if (peek_next() == ' ' || peek_next() == '\t' || peek_next() == '\n')
+                else if (peek_next(input, s) == ' ' || peek_next(input, s) == '\t' || peek_next(input, s) == '\n')
                 {
                     // sequence entry
-                    advance();
+                    advance(input, s);
                     return token{token_type::sequence_entry, "-", start_line, start_column};
                 }
                 break;
 
             case '.':
-                if (peek_next() == '.' && position_ + 2 < input_.size() && input_[position_ + 2] == '.')
+                if (peek_next(input, s) == '.' && s.position + 2 < input.size() && input[s.position + 2] == '.')
                 {
                     // document end
-                    advance();
-                    advance();
-                    advance();
+                    advance(input, s);
+                    advance(input, s);
+                    advance(input, s);
                     return token{token_type::document_end, "...", start_line, start_column};
                 }
                 break;
 
             case ':':
-                advance();
+                advance(input, s);
                 return token{token_type::mapping_key, ":", start_line, start_column};
 
             case '[':
-                advance();
+                advance(input, s);
                 return token{token_type::sequence_start, "[", start_line, start_column};
 
             case ']':
-                advance();
+                advance(input, s);
                 return token{token_type::sequence_end, "]", start_line, start_column};
 
             case '{':
-                advance();
+                advance(input, s);
                 return token{token_type::mapping_start, "{", start_line, start_column};
 
             case '}':
-                advance();
+                advance(input, s);
                 return token{token_type::mapping_end, "}", start_line, start_column};
 
+            case ',':
+                advance(input, s);
+                return token{token_type::string_literal, ",", start_line, start_column};
+
             case '"':
-                return parse_quoted_string('"');
+                return parse_quoted_string(input, s, '"');
 
             case '\'':
-                return parse_quoted_string('\'');
+                return parse_quoted_string(input, s, '\'');
 
             case '&':
-                return parse_anchor();
+                return parse_anchor(input, s);
 
             case '*':
-                return parse_alias();
+                return parse_alias(input, s);
 
             case '!':
-                return parse_tag();
+                return parse_tag(input, s);
 
             case '|':
-                advance();
+                advance(input, s);
                 return token{token_type::literal_string, "|", start_line, start_column};
 
             case '>':
-                advance();
+                advance(input, s);
                 return token{token_type::folded_string, ">", start_line, start_column};
 
             default:
                 if (is_digit(c) || c == '-' || c == '+')
                 {
-                    return parse_number();
+                    return parse_number(input, s);
                 }
                 else if (is_alpha(c) || c == '_')
                 {
-                    return parse_identifier();
+                    return parse_identifier(input, s);
                 }
                 break;
             }
@@ -206,102 +218,102 @@ namespace yaml::ct::detail
             return yaml::ct::error_code::unexpected_token;
         }
 
-        constexpr auto parse_quoted_string(char quote) noexcept -> std::variant<token, yaml::ct::error_code>
+        static constexpr auto parse_quoted_string(std::string_view input, state &s, char quote) noexcept -> std::variant<token, yaml::ct::error_code>
         {
-            std::size_t start_line = line_;
-            std::size_t start_column = column_;
-            std::size_t start_pos = position_;
+            std::size_t start_line = s.line;
+            std::size_t start_column = s.column;
+            std::size_t start_pos = s.position;
 
-            advance(); // skip opening quote
+            advance(input, s); // skip opening quote
 
-            while (!at_end() && peek() != quote)
+            while (!at_end(input, s) && peek(input, s) != quote)
             {
-                if (peek() == '\\')
+                if (peek(input, s) == '\\')
                 {
-                    advance(); // skip backslash
-                    if (!at_end())
-                        advance(); // skip escaped character
+                    advance(input, s); // skip backslash
+                    if (!at_end(input, s))
+                        advance(input, s); // skip escaped character
                 }
                 else
                 {
-                    advance();
+                    advance(input, s);
                 }
             }
 
-            if (at_end())
+            if (at_end(input, s))
             {
                 return yaml::ct::error_code::unterminated_string;
             }
 
-            advance(); // skip closing quote
+            advance(input, s); // skip closing quote
 
-            std::string_view value = input_.substr(start_pos, position_ - start_pos);
+            std::string_view value = input.substr(start_pos, s.position - start_pos);
             return token{token_type::quoted_string, value, start_line, start_column};
         }
 
-        constexpr auto parse_number() noexcept -> std::variant<token, yaml::ct::error_code>
+        static constexpr auto parse_number(std::string_view input, state &s) noexcept -> std::variant<token, yaml::ct::error_code>
         {
-            std::size_t start_line = line_;
-            std::size_t start_column = column_;
-            std::size_t start_pos = position_;
+            std::size_t start_line = s.line;
+            std::size_t start_column = s.column;
+            std::size_t start_pos = s.position;
 
             // handle sign
-            if (peek() == '-' || peek() == '+')
+            if (peek(input, s) == '-' || peek(input, s) == '+')
             {
-                advance();
+                advance(input, s);
             }
 
             // parse digits
-            while (!at_end() && is_digit(peek()))
+            while (!at_end(input, s) && is_digit(peek(input, s)))
             {
-                advance();
+                advance(input, s);
             }
 
             bool is_float = false;
 
             // handle decimal point
-            if (!at_end() && peek() == '.')
+            if (!at_end(input, s) && peek(input, s) == '.')
             {
                 is_float = true;
-                advance();
-                while (!at_end() && is_digit(peek()))
+                advance(input, s);
+                while (!at_end(input, s) && is_digit(peek(input, s)))
                 {
-                    advance();
+                    advance(input, s);
                 }
             }
 
             // handle scientific notation
-            if (!at_end() && (peek() == 'e' || peek() == 'E'))
+            if (!at_end(input, s) && (peek(input, s) == 'e' || peek(input, s) == 'E'))
             {
                 is_float = true;
-                advance();
-                if (!at_end() && (peek() == '+' || peek() == '-'))
+                advance(input, s);
+                if (!at_end(input, s) && (peek(input, s) == '+' || peek(input, s) == '-'))
                 {
-                    advance();
+                    advance(input, s);
                 }
-                while (!at_end() && is_digit(peek()))
+                while (!at_end(input, s) && is_digit(peek(input, s)))
                 {
-                    advance();
+                    advance(input, s);
                 }
             }
 
-            std::string_view value = input_.substr(start_pos, position_ - start_pos);
+            std::string_view value = input.substr(start_pos, s.position - start_pos);
             token_type type = is_float ? token_type::float_literal : token_type::integer_literal;
             return token{type, value, start_line, start_column};
         }
 
-        constexpr auto parse_identifier() noexcept -> std::variant<token, yaml::ct::error_code>
+        static constexpr auto parse_identifier(std::string_view input, state &s) noexcept -> std::variant<token, yaml::ct::error_code>
         {
-            std::size_t start_line = line_;
-            std::size_t start_column = column_;
-            std::size_t start_pos = position_;
+            std::size_t start_line = s.line;
+            std::size_t start_column = s.column;
+            std::size_t start_pos = s.position;
 
-            while (!at_end() && (is_alnum(peek()) || peek() == '_' || peek() == '-'))
+            while (!at_end(input, s) && (is_alnum(peek(input, s)) || peek(input, s) == '_' || peek(input, s) == '-'))
             {
-                advance();
+                advance(input, s);
             }
 
-            std::string_view value = input_.substr(start_pos, position_ - start_pos);
+            std::string_view value = input.substr(start_pos, s.position - start_pos);
 
             // check for special keywords
             if (value == "true" || value == "false")
@@ -316,65 +328,60 @@ namespace yaml::ct::detail
             return token{token_type::string_literal, value, start_line, start_column};
         }
 
-        constexpr auto parse_anchor() noexcept -> std::variant<token, yaml::ct::error_code>
+        static constexpr auto parse_anchor(std::string_view input, state &s) noexcept -> std::variant<token, yaml::ct::error_code>
         {
-            std::size_t start_line = line_;
-            std::size_t start_column = column_;
-            std::size_t start_pos = position_;
+            std::size_t start_line = s.line;
+            std::size_t start_column = s.column;
+            std::size_t start_pos = s.position;
 
-            advance(); // skip &
+            advance(input, s); // skip &
 
-            while (!at_end() && (is_alnum(peek()) || peek() == '_' || peek() == '-'))
+            while (!at_end(input, s) && (is_alnum(peek(input, s)) || peek(input, s) == '_' || peek(input, s) == '-'))
             {
-                advance();
+                advance(input, s);
             }
 
-            std::string_view value = input_.substr(start_pos, position_ - start_pos);
+            std::string_view value = input.substr(start_pos, s.position - start_pos);
             return token{token_type::anchor, value, start_line, start_column};
         }
 
-        constexpr auto parse_alias() noexcept -> std::variant<token, yaml::ct::error_code>
+        static constexpr auto parse_alias(std::string_view input, state &s) noexcept -> std::variant<token, yaml::ct::error_code>
         {
-            std::size_t start_line = line_;
-            std::size_t start_column = column_;
-            std::size_t start_pos = position_;
+            std::size_t start_line = s.line;
+            std::size_t start_column = s.column;
+            std::size_t start_pos = s.position;
 
-            advance(); // skip *
+            advance(input, s); // skip *
 
-            while (!at_end() && (is_alnum(peek()) || peek() == '_' || peek() == '-'))
+            while (!at_end(input, s) && (is_alnum(peek(input, s)) || peek(input, s) == '_' || peek(input, s) == '-'))
             {
-                advance();
+                advance(input, s);
             }
 
-            std::string_view value = input_.substr(start_pos, position_ - start_pos);
+            std::string_view value = input.substr(start_pos, s.position - start_pos);
             return token{token_type::alias, value, start_line, start_column};
         }
 
-        constexpr auto parse_tag() noexcept -> std::variant<token, yaml::ct::error_code>
+        static constexpr auto parse_tag(std::string_view input, state &s) noexcept -> std::variant<token, yaml::ct::error_code>
         {
-            std::size_t start_line = line_;
-            std::size_t start_column = column_;
-            std::size_t start_pos = position_;
+            std::size_t start_line = s.line;
+            std::size_t start_column = s.column;
+            std::size_t start_pos = s.position;
 
-            advance(); // skip first !
-            if (!at_end() && peek() == '!')
+            advance(input, s); // skip first !
+            if (!at_end(input, s) && peek(input, s) == '!')
             {
-                advance(); // skip second !
+                advance(input, s); // skip second !
             }
 
-            while (!at_end() && peek() != ' ' && peek() != '\t' && peek() != '\n')
+            while (!at_end(input, s) && peek(input, s) != ' ' && peek(input, s) != '\t' && peek(input, s) != '\n')
             {
-                advance();
+                advance(input, s);
             }
 
-            std::string_view value = input_.substr(start_pos, position_ - start_pos);
+            std::string_view value = input.substr(start_pos, s.position - start_pos);
             return token{token_type::tag, value, start_line, start_column};
         }
-
-        std::string_view input_;
-        std::size_t position_{0};
-        std::size_t line_{1};
-        std::size_t column_{1};
     };
 
 } // namespace yaml::ct::detail

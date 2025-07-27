@@ -1,15 +1,13 @@
 #pragma once
 
-// jesus fucking christ, the amount of type safety i'm about to implement
-// will make your head spin. this is what happens when you actually
-// understand c++ instead of just cargo-culting from tutorials
-
-#include <array>
-#include <cstdint>
+#include <memory> // Added for recursive_wrapper
+#include <new>    // Added for placement new
 #include <optional>
 #include <string_view>
 #include <utility>
 #include <variant>
+#include <yaml/detail/string_storage.hpp> // for string_storage
+#include <yaml/detail/utils.hpp>          // for is_alpha, is_digit, etc.
 
 namespace yaml::ct
 {
@@ -33,7 +31,6 @@ namespace yaml::ct
 namespace yaml::ct::detail
 {
 
-    // because you probably think yaml only has strings and numbers
     enum class [[nodiscard]] token_type : std::uint8_t
     {
         // basic tokens
@@ -76,7 +73,6 @@ namespace yaml::ct::detail
         invalid
     };
 
-    // token structure that doesn't make me want to quit programming
     struct token
     {
         token_type type_{token_type::invalid};
@@ -90,7 +86,6 @@ namespace yaml::ct::detail
             : type_{type}, value_{value}, line_{line}, column_{column} {}
     };
 
-    // because dynamic allocation at compile time is still a pipe dream
     template <std::size_t MaxTokens = 1024>
     using token_array = std::array<token, MaxTokens>;
 
@@ -101,74 +96,127 @@ namespace yaml::ct::detail
         constexpr auto operator<=>(const null_t &) const = default;
     };
     using boolean = bool;
-    using integer = std::int64_t; // because int is for children
-    using floating = double;      // precision matters, unlike your last project
-
-    // compile-time string storage because std::string is runtime garbage
-    template <std::size_t MaxSize>
-    class string_storage
-    {
-    public:
-        constexpr string_storage() = default;
-
-        constexpr explicit string_storage(std::string_view str) noexcept
-        {
-            // bounds checking because we're not writing c
-            const auto copy_size = std::min(str.size(), MaxSize - 1);
-            for (std::size_t i = 0; i < copy_size; ++i)
-            {
-                data_[i] = str[i];
-            }
-            size_ = copy_size;
-            data_[size_] = '\0';
-        }
-
-        [[nodiscard]] constexpr auto view() const noexcept -> std::string_view
-        {
-            return {data_.data(), size_};
-        }
-
-        [[nodiscard]] constexpr auto size() const noexcept -> std::size_t
-        {
-            return size_;
-        }
-
-        [[nodiscard]] constexpr auto operator<=>(const string_storage &) const = default;
-
-    private:
-        std::array<char, MaxSize> data_{};
-        std::size_t size_{0};
-    };
-
-    // Helper constexpr functions for character classification
-    constexpr bool is_alpha(char c) noexcept
-    {
-        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
-    }
-
-    constexpr bool is_digit(char c) noexcept
-    {
-        return c >= '0' && c <= '9';
-    }
-
-    constexpr bool is_alnum(char c) noexcept
-    {
-        return is_alpha(c) || is_digit(c);
-    }
+    using integer = std::int64_t;
+    using floating = double;
 
     // Forward declarations to break circular dependency
     struct sequence_impl;
     struct mapping_impl;
 
-    // The main value type - fixed to avoid circular template dependency
+    // Type-erased container for recursive types using static storage
+    struct yaml_container
+    {
+        enum class type
+        {
+            none,
+            sequence,
+            mapping
+        };
+        type kind{type::none};
+
+        // Use aligned storage to store either type
+        alignas(8) char storage[sizeof(void *) * 128]; // Large enough for our types
+
+        constexpr yaml_container() = default;
+
+        constexpr yaml_container(sequence_impl &&s) : kind(type::sequence)
+        {
+            new (storage) sequence_impl(std::move(s));
+        }
+
+        constexpr yaml_container(mapping_impl &&m) : kind(type::mapping)
+        {
+            new (storage) mapping_impl(std::move(m));
+        }
+
+        constexpr yaml_container(const yaml_container &other) : kind(other.kind)
+        {
+            if (kind == type::sequence)
+            {
+                new (storage) sequence_impl(*reinterpret_cast<const sequence_impl *>(other.storage));
+            }
+            else if (kind == type::mapping)
+            {
+                new (storage) mapping_impl(*reinterpret_cast<const mapping_impl *>(other.storage));
+            }
+        }
+
+        constexpr yaml_container(yaml_container &&other) : kind(other.kind)
+        {
+            if (kind == type::sequence)
+            {
+                new (storage) sequence_impl(std::move(*reinterpret_cast<sequence_impl *>(other.storage)));
+            }
+            else if (kind == type::mapping)
+            {
+                new (storage) mapping_impl(std::move(*reinterpret_cast<mapping_impl *>(other.storage)));
+            }
+        }
+
+        constexpr ~yaml_container()
+        {
+            if (kind == type::sequence)
+            {
+                reinterpret_cast<sequence_impl *>(storage)->~sequence_impl();
+            }
+            else if (kind == type::mapping)
+            {
+                reinterpret_cast<mapping_impl *>(storage)->~mapping_impl();
+            }
+        }
+
+        constexpr yaml_container &operator=(const yaml_container &other)
+        {
+            if (this != &other)
+            {
+                this->~yaml_container();
+                new (this) yaml_container(other);
+            }
+            return *this;
+        }
+
+        constexpr yaml_container &operator=(yaml_container &&other)
+        {
+            if (this != &other)
+            {
+                this->~yaml_container();
+                new (this) yaml_container(std::move(other));
+            }
+            return *this;
+        }
+
+        constexpr sequence_impl &as_sequence()
+        {
+            return *reinterpret_cast<sequence_impl *>(storage);
+        }
+
+        constexpr const sequence_impl &as_sequence() const
+        {
+            return *reinterpret_cast<const sequence_impl *>(storage);
+        }
+
+        constexpr mapping_impl &as_mapping()
+        {
+            return *reinterpret_cast<mapping_impl *>(storage);
+        }
+
+        constexpr const mapping_impl &as_mapping() const
+        {
+            return *reinterpret_cast<const mapping_impl *>(storage);
+        }
+
+        constexpr bool is_sequence() const { return kind == type::sequence; }
+        constexpr bool is_mapping() const { return kind == type::mapping; }
+    };
+
+    // The main value type - using yaml_container for recursive types
     using yaml_value = std::variant<
         null_t,
         boolean,
         integer,
         floating,
         string_storage<256>,
-        sequence_impl,
-        mapping_impl>;
+        yaml_container>;
 
     // sequence implementation that doesn't make me cry
     struct sequence_impl

@@ -50,16 +50,16 @@ namespace yaml::ct
 
         auto yaml_view = make_yaml_view(yaml_str);
 
-        auto lexer = detail::lexer<1024>{yaml_view}; // explicit template parameter because you keep fucking this up
-        auto tokens_result = lexer.tokenize();
+        detail::lexer<1024> lexer{};
+        auto tokens_result = lexer.tokenize(yaml_view);
 
         if (std::holds_alternative<error_code>(tokens_result))
         {
             return std::get<error_code>(tokens_result);
         }
 
-        auto const &tokens = std::get<detail::token_array<1024>>(tokens_result); // explicit template parameter
-        auto parser = detail::parser<1024>{tokens};                              // explicit template parameter
+        auto const &tokens = std::get<detail::token_array<1024>>(tokens_result);
+        auto parser = detail::parser<1024>{tokens};
 
         return parser.parse_document();
     }
@@ -68,10 +68,10 @@ namespace yaml::ct
     template <std::size_t N>
     constexpr auto parse_or_throw(const char (&yaml_str)[N]) -> document
     {
-        constexpr auto result = parse(yaml_str);
+        auto result = parse(yaml_str); // Changed: removed constexpr here
 
         // The static_assert will be triggered by the calling code if this fails
-        if constexpr (std::holds_alternative<document>(result))
+        if (std::holds_alternative<document>(result))
         {
             return std::get<document>(result);
         }

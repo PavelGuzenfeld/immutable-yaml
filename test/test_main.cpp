@@ -23,36 +23,44 @@ int main()
   constexpr auto mapping_doc = yaml::ct::parse_or_throw(R"({name: "test", count: 42})");
 
   // Test that the parsing actually worked by checking we can create the documents
-  static_assert(std::holds_alternative<yaml::ct::detail::mapping_impl>(simple_doc.root_) ||
-                std::holds_alternative<yaml::ct::detail::sequence_impl>(simple_doc.root_) ||
+  // Updated to use yaml_container
+  static_assert(std::holds_alternative<yaml::ct::detail::yaml_container>(simple_doc.root_) ||
                 std::holds_alternative<yaml::ct::detail::string_storage<256>>(simple_doc.root_));
 
-  static_assert(std::holds_alternative<yaml::ct::detail::sequence_impl>(array_doc.root_));
-  static_assert(std::holds_alternative<yaml::ct::detail::mapping_impl>(mapping_doc.root_));
+  static_assert(std::holds_alternative<yaml::ct::detail::yaml_container>(array_doc.root_));
+  static_assert(std::holds_alternative<yaml::ct::detail::yaml_container>(mapping_doc.root_));
 
   std::cout << "all compile-time tests passed!\n";
   std::cout << "your yaml parser doesn't completely suck\n";
 
-  // Runtime verification that the values are accessible
-  if (auto *mapping = std::get_if<yaml::ct::detail::mapping_impl>(&simple_doc.root_))
+  // Runtime verification that the values are accessible - updated for yaml_container
+  if (auto *container = std::get_if<yaml::ct::detail::yaml_container>(&simple_doc.root_))
   {
-    if (auto value = mapping->find("key"))
+    if (container->is_mapping())
     {
-      if (auto *str = std::get_if<yaml::ct::detail::string_storage<256>>(&*value))
+      auto &mapping = container->as_mapping();
+      if (auto value = mapping.find("key"))
       {
-        std::cout << "Found key 'key' with value: '" << str->view() << "'\n";
+        if (auto *str = std::get_if<yaml::ct::detail::string_storage<256>>(&*value))
+        {
+          std::cout << "Found key 'key' with value: '" << str->view() << "'\n";
+        }
       }
     }
   }
 
-  if (auto *sequence = std::get_if<yaml::ct::detail::sequence_impl>(&array_doc.root_))
+  if (auto *container = std::get_if<yaml::ct::detail::yaml_container>(&array_doc.root_))
   {
-    std::cout << "Array has " << sequence->size() << " elements\n";
-    if (sequence->size() > 0)
+    if (container->is_sequence())
     {
-      if (auto *num = std::get_if<yaml::ct::detail::integer>(&(*sequence)[0]))
+      auto &sequence = container->as_sequence();
+      std::cout << "Array has " << sequence.size() << " elements\n";
+      if (sequence.size() > 0)
       {
-        std::cout << "First element: " << *num << "\n";
+        if (auto *num = std::get_if<yaml::ct::detail::integer>(&sequence[0]))
+        {
+          std::cout << "First element: " << *num << "\n";
+        }
       }
     }
   }

@@ -32,7 +32,7 @@ namespace yaml::ct::detail
                 return std::get<yaml::ct::error_code>(value_result);
             }
 
-            return document{std::get<document::value_type>(value_result)};
+            return document{std::get<yaml_value>(value_result)};
         }
 
     private:
@@ -49,7 +49,7 @@ namespace yaml::ct::detail
             }
         }
 
-        constexpr auto parse_value() noexcept -> std::variant<document::value_type, yaml::ct::error_code>
+        constexpr auto parse_value() noexcept -> std::variant<yaml_value, yaml::ct::error_code>
         {
             const auto &tok = current_token();
 
@@ -88,7 +88,7 @@ namespace yaml::ct::detail
             }
         }
 
-        constexpr auto parse_integer() noexcept -> std::variant<document::value_type, yaml::ct::error_code>
+        constexpr auto parse_integer() noexcept -> std::variant<yaml_value, yaml::ct::error_code>
         {
             const auto &tok = current_token();
             advance();
@@ -110,7 +110,7 @@ namespace yaml::ct::detail
 
             for (; i < tok.value_.size(); ++i)
             {
-                if (std::isdigit(tok.value_[i]))
+                if (is_digit(tok.value_[i]))
                 {
                     result = result * 10 + (tok.value_[i] - '0');
                 }
@@ -119,7 +119,7 @@ namespace yaml::ct::detail
             return negative ? -result : result;
         }
 
-        constexpr auto parse_float() noexcept -> std::variant<document::value_type, yaml::ct::error_code>
+        constexpr auto parse_float() noexcept -> std::variant<yaml_value, yaml::ct::error_code>
         {
             const auto &tok = current_token();
             advance();
@@ -144,7 +144,7 @@ namespace yaml::ct::detail
             for (; i < tok.value_.size(); ++i)
             {
                 char c = tok.value_[i];
-                if (std::isdigit(c))
+                if (is_digit(c))
                 {
                     if (in_decimal)
                     {
@@ -170,7 +170,7 @@ namespace yaml::ct::detail
             return negative ? -result : result;
         }
 
-        constexpr auto parse_string() noexcept -> std::variant<document::value_type, yaml::ct::error_code>
+        constexpr auto parse_string() noexcept -> std::variant<yaml_value, yaml::ct::error_code>
         {
             const auto &tok = current_token();
             advance();
@@ -191,11 +191,11 @@ namespace yaml::ct::detail
             }
         }
 
-        constexpr auto parse_flow_sequence() noexcept -> std::variant<document::value_type, yaml::ct::error_code>
+        constexpr auto parse_flow_sequence() noexcept -> std::variant<yaml_value, yaml::ct::error_code>
         {
             advance(); // skip [
 
-            sequence<64> seq{};
+            sequence_impl seq{};
 
             while (current_token().type_ != token_type::sequence_end &&
                    current_token().type_ != token_type::eof)
@@ -207,7 +207,7 @@ namespace yaml::ct::detail
                     return std::get<yaml::ct::error_code>(value_result);
                 }
 
-                if (!seq.push_back(std::get<document::value_type>(value_result)))
+                if (!seq.push_back(std::get<yaml_value>(value_result)))
                 {
                     return yaml::ct::error_code::invalid_syntax; // sequence full
                 }
@@ -228,11 +228,11 @@ namespace yaml::ct::detail
             return seq;
         }
 
-        constexpr auto parse_flow_mapping() noexcept -> std::variant<document::value_type, yaml::ct::error_code>
+        constexpr auto parse_flow_mapping() noexcept -> std::variant<yaml_value, yaml::ct::error_code>
         {
             advance(); // skip {
 
-            mapping<64> map{};
+            mapping_impl map{};
 
             while (current_token().type_ != token_type::mapping_end &&
                    current_token().type_ != token_type::eof)
@@ -245,7 +245,7 @@ namespace yaml::ct::detail
                     return std::get<yaml::ct::error_code>(key_result);
                 }
 
-                auto key = std::get<string_storage<256>>(std::get<document::value_type>(key_result));
+                auto key = std::get<string_storage<256>>(std::get<yaml_value>(key_result));
 
                 // expect colon
                 if (current_token().type_ != token_type::mapping_key)
@@ -261,7 +261,7 @@ namespace yaml::ct::detail
                     return std::get<yaml::ct::error_code>(value_result);
                 }
 
-                if (!map.insert(std::move(key), std::get<document::value_type>(value_result)))
+                if (!map.insert(std::move(key), std::get<yaml_value>(value_result)))
                 {
                     return yaml::ct::error_code::duplicate_key;
                 }
@@ -282,9 +282,9 @@ namespace yaml::ct::detail
             return map;
         }
 
-        constexpr auto parse_block_sequence() noexcept -> std::variant<document::value_type, yaml::ct::error_code>
+        constexpr auto parse_block_sequence() noexcept -> std::variant<yaml_value, yaml::ct::error_code>
         {
-            sequence<64> seq{};
+            sequence_impl seq{};
 
             while (current_token().type_ == token_type::sequence_entry)
             {
@@ -296,7 +296,7 @@ namespace yaml::ct::detail
                     return std::get<yaml::ct::error_code>(value_result);
                 }
 
-                if (!seq.push_back(std::get<document::value_type>(value_result)))
+                if (!seq.push_back(std::get<yaml_value>(value_result)))
                 {
                     return yaml::ct::error_code::invalid_syntax; // sequence full
                 }
@@ -305,9 +305,9 @@ namespace yaml::ct::detail
             return seq;
         }
 
-        constexpr auto parse_block_mapping() noexcept -> std::variant<document::value_type, yaml::ct::error_code>
+        constexpr auto parse_block_mapping() noexcept -> std::variant<yaml_value, yaml::ct::error_code>
         {
-            mapping<64> map{};
+            mapping_impl map{};
 
             while (current_token().type_ == token_type::string_literal ||
                    current_token().type_ == token_type::quoted_string)
@@ -320,7 +320,7 @@ namespace yaml::ct::detail
                     return std::get<yaml::ct::error_code>(key_result);
                 }
 
-                auto key = std::get<string_storage<256>>(std::get<document::value_type>(key_result));
+                auto key = std::get<string_storage<256>>(std::get<yaml_value>(key_result));
 
                 // expect colon
                 if (current_token().type_ != token_type::mapping_key)
@@ -336,7 +336,7 @@ namespace yaml::ct::detail
                     return std::get<yaml::ct::error_code>(value_result);
                 }
 
-                if (!map.insert(std::move(key), std::get<document::value_type>(value_result)))
+                if (!map.insert(std::move(key), std::get<yaml_value>(value_result)))
                 {
                     return yaml::ct::error_code::duplicate_key;
                 }

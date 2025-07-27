@@ -192,11 +192,11 @@ namespace yaml::ct::detail
                 return token{token_type::folded_string, ">", start_line, start_column};
 
             default:
-                if (std::isdigit(c) || c == '-' || c == '+')
+                if (is_digit(c) || c == '-' || c == '+')
                 {
                     return parse_number();
                 }
-                else if (std::isalpha(c) || c == '_')
+                else if (is_alpha(c) || c == '_')
                 {
                     return parse_identifier();
                 }
@@ -252,7 +252,7 @@ namespace yaml::ct::detail
             }
 
             // parse digits
-            while (!at_end() && std::isdigit(peek()))
+            while (!at_end() && is_digit(peek()))
             {
                 advance();
             }
@@ -264,7 +264,7 @@ namespace yaml::ct::detail
             {
                 is_float = true;
                 advance();
-                while (!at_end() && std::isdigit(peek()))
+                while (!at_end() && is_digit(peek()))
                 {
                     advance();
                 }
@@ -279,7 +279,7 @@ namespace yaml::ct::detail
                 {
                     advance();
                 }
-                while (!at_end() && std::isdigit(peek()))
+                while (!at_end() && is_digit(peek()))
                 {
                     advance();
                 }
@@ -296,7 +296,7 @@ namespace yaml::ct::detail
             std::size_t start_column = column_;
             std::size_t start_pos = position_;
 
-            while (!at_end() && (std::isalnum(peek()) || peek() == '_' || peek() == '-'))
+            while (!at_end() && (is_alnum(peek()) || peek() == '_' || peek() == '-'))
             {
                 advance();
             }
@@ -324,7 +324,7 @@ namespace yaml::ct::detail
 
             advance(); // skip &
 
-            while (!at_end() && (std::isalnum(peek()) || peek() == '_' || peek() == '-'))
+            while (!at_end() && (is_alnum(peek()) || peek() == '_' || peek() == '-'))
             {
                 advance();
             }
@@ -341,7 +341,7 @@ namespace yaml::ct::detail
 
             advance(); // skip *
 
-            while (!at_end() && (std::isalnum(peek()) || peek() == '_' || peek() == '-'))
+            while (!at_end() && (is_alnum(peek()) || peek() == '_' || peek() == '-'))
             {
                 advance();
             }
@@ -362,7 +362,7 @@ namespace yaml::ct::detail
                 advance(); // skip second !
             }
 
-            while (!at_end() && !std::isspace(peek()))
+            while (!at_end() && peek() != ' ' && peek() != '\t' && peek() != '\n')
             {
                 advance();
             }

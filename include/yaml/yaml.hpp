@@ -24,6 +24,20 @@ namespace yaml::ct
     template <typename T>
     using result = std::variant<T, error_code>;
 
+    // helper function to create string_view at compile time
+    template <std::size_t N>
+    constexpr auto make_yaml_view(const char (&yaml_str)[N]) noexcept -> std::string_view
+    {
+        if constexpr (N <= 1)
+        {
+            return std::string_view{};
+        }
+        else
+        {
+            return std::string_view{yaml_str, N - 1}; // remove null terminator
+        }
+    }
+
     // the main event - your compile-time yaml parser that doesn't suck
     template <std::size_t N>
     constexpr auto parse(const char (&yaml_str)[N]) noexcept -> result<document>
@@ -34,7 +48,7 @@ namespace yaml::ct
             return error_code::invalid_syntax;
         }
 
-        constexpr std::string_view yaml_view{yaml_str, N - 1}; // remove null terminator because we're not animals
+        auto yaml_view = make_yaml_view(yaml_str);
 
         auto lexer = detail::lexer<1024>{yaml_view}; // explicit template parameter because you keep fucking this up
         auto tokens_result = lexer.tokenize();
@@ -55,16 +69,24 @@ namespace yaml::ct
     constexpr auto parse_or_throw(const char (&yaml_str)[N]) -> document
     {
         constexpr auto result = parse(yaml_str);
-        static_assert(std::holds_alternative<document>(result),
-                      "yaml parsing failed at compile time - fix your yaml, genius");
-        return std::get<document>(result);
+
+        // The static_assert will be triggered by the calling code if this fails
+        if constexpr (std::holds_alternative<document>(result))
+        {
+            return std::get<document>(result);
+        }
+        else
+        {
+            // This creates a compile-time error if parsing fails
+            return std::get<document>(result); // This will fail if result contains an error
+        }
     }
 
     // validation function because apparently you need compile-time guarantees
     template <std::size_t N>
     constexpr auto is_valid(const char (&yaml_str)[N]) noexcept -> bool
     {
-        constexpr auto result = parse(yaml_str);
+        auto result = parse(yaml_str);
         return std::holds_alternative<document>(result);
     }
 

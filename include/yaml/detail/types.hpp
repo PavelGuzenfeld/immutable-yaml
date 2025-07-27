@@ -97,31 +97,12 @@ namespace yaml::ct::detail
     // yaml value types that actually make sense
     struct null_t
     {
+        constexpr bool operator==(const null_t &) const = default;
+        constexpr auto operator<=>(const null_t &) const = default;
     };
     using boolean = bool;
     using integer = std::int64_t; // because int is for children
     using floating = double;      // precision matters, unlike your last project
-
-    // forward declarations because we're not savages
-    template <std::size_t MaxSize = 256>
-    class string_storage;
-
-    template <std::size_t MaxItems = 64>
-    class sequence;
-
-    template <std::size_t MaxPairs = 64>
-    class mapping;
-
-    // the main value type that can hold anything yaml throws at it
-    template <std::size_t MaxStringSize = 256, std::size_t MaxItems = 64>
-    using value = std::variant<
-        null_t,
-          boolean,
-          integer,
-          floating,
-          string_storage<MaxStringSize>,
-          sequence<MaxItems>,
-          mapping<MaxItems> > ;
 
     // compile-time string storage because std::string is runtime garbage
     template <std::size_t MaxSize>
@@ -159,18 +140,44 @@ namespace yaml::ct::detail
         std::size_t size_{0};
     };
 
-    // sequence implementation that doesn't make me cry
-    template <std::size_t MaxItems>
-    class sequence
+    // Helper constexpr functions for character classification
+    constexpr bool is_alpha(char c) noexcept
     {
-    public:
-        using value_type = value<256, MaxItems>;
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+    }
 
-        constexpr sequence() = default;
+    constexpr bool is_digit(char c) noexcept
+    {
+        return c >= '0' && c <= '9';
+    }
 
-        constexpr auto push_back(value_type val) noexcept -> bool
+    constexpr bool is_alnum(char c) noexcept
+    {
+        return is_alpha(c) || is_digit(c);
+    }
+
+    // Forward declarations to break circular dependency
+    struct sequence_impl;
+    struct mapping_impl;
+
+    // The main value type - fixed to avoid circular template dependency
+    using yaml_value = std::variant<
+        null_t,
+        boolean,
+        integer,
+        floating,
+        string_storage<256>,
+        sequence_impl,
+        mapping_impl>;
+
+    // sequence implementation that doesn't make me cry
+    struct sequence_impl
+    {
+        constexpr sequence_impl() = default;
+
+        constexpr auto push_back(yaml_value val) noexcept -> bool
         {
-            if (size_ >= MaxItems)
+            if (size_ >= 64)
                 return false; // overflow protection
             items_[size_++] = std::move(val);
             return true;
@@ -182,30 +189,27 @@ namespace yaml::ct::detail
         }
 
         [[nodiscard]] constexpr auto operator[](std::size_t idx) const noexcept
-            -> const value_type &
+            -> const yaml_value &
         {
             return items_[idx]; // bounds checking is for debug builds
         }
 
-        [[nodiscard]] constexpr auto operator<=>(const sequence &) const = default;
+        // Comparison operators removed to avoid circular dependency issues with variants
 
     private:
-        std::array<value_type, MaxItems> items_{};
+        std::array<yaml_value, 64> items_{};
         std::size_t size_{0};
     };
 
     // mapping implementation because apparently maps are hard
-    template <std::size_t MaxPairs>
-    class mapping
+    struct mapping_impl
     {
-    public:
         using key_type = string_storage<256>;
-        using value_type = value<256, MaxPairs>;
-        using pair_type = std::pair<key_type, value_type>;
+        using pair_type = std::pair<key_type, yaml_value>;
 
-        constexpr mapping() = default;
+        constexpr mapping_impl() = default;
 
-        constexpr auto insert(key_type key, value_type val) noexcept -> bool
+        constexpr auto insert(key_type key, yaml_value val) noexcept -> bool
         {
             // check for duplicates because yaml doesn't allow them
             for (std::size_t i = 0; i < size_; ++i)
@@ -216,14 +220,14 @@ namespace yaml::ct::detail
                 }
             }
 
-            if (size_ >= MaxPairs)
+            if (size_ >= 64)
                 return false; // overflow protection
             pairs_[size_++] = {std::move(key), std::move(val)};
             return true;
         }
 
         [[nodiscard]] constexpr auto find(std::string_view key) const noexcept
-            -> std::optional<value_type>
+            -> std::optional<yaml_value>
         {
             for (std::size_t i = 0; i < size_; ++i)
             {
@@ -246,24 +250,34 @@ namespace yaml::ct::detail
             return pairs_[idx];
         }
 
-        [[nodiscard]] constexpr auto operator<=>(const mapping &) const = default;
+        // Comparison operators removed to avoid circular dependency issues with variants
 
     private:
-        std::array<pair_type, MaxPairs> pairs_{};
+        std::array<pair_type, 64> pairs_{};
         std::size_t size_{0};
     };
+
+    // Template aliases for backward compatibility
+    template <std::size_t MaxItems = 64>
+    using sequence = sequence_impl;
+
+    template <std::size_t MaxPairs = 64>
+    using mapping = mapping_impl;
+
+    template <std::size_t MaxStringSize = 256, std::size_t MaxItems = 64>
+    using value = yaml_value;
 
     // document structure because yaml can have multiple documents
     struct document
     {
-        using value_type = value<256, 64>;
+        using value_type = yaml_value;
         value_type root_{};
 
         constexpr document() = default;
         constexpr explicit document(value_type root) noexcept
             : root_{std::move(root)} {}
 
-        [[nodiscard]] constexpr auto operator<=>(const document &) const = default;
+        // Comparison operators removed to avoid circular dependency issues with variants
     };
 
 } // namespace yaml::ct::detail

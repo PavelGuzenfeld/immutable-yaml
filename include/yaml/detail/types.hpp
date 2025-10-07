@@ -99,126 +99,20 @@ namespace yaml::ct::detail
     using integer = std::int64_t;
     using floating = double;
 
-    // Forward declarations to break circular dependency
-    struct sequence_impl;
-    struct mapping_impl;
+    // Forward declare yaml_container for use in yaml_value
+    struct yaml_container;
 
-    // Type-erased container for recursive types using static storage
-    struct yaml_container
-    {
-        enum class type
-        {
-            none,
-            sequence,
-            mapping
-        };
-        type kind{type::none};
-
-        // Use aligned storage to store either type
-        alignas(8) char storage[sizeof(void *) * 128]; // Large enough for our types
-
-        constexpr yaml_container() = default;
-
-        constexpr yaml_container(sequence_impl &&s) : kind(type::sequence)
-        {
-            new (storage) sequence_impl(std::move(s));
-        }
-
-        constexpr yaml_container(mapping_impl &&m) : kind(type::mapping)
-        {
-            new (storage) mapping_impl(std::move(m));
-        }
-
-        constexpr yaml_container(const yaml_container &other) : kind(other.kind)
-        {
-            if (kind == type::sequence)
-            {
-                new (storage) sequence_impl(*reinterpret_cast<const sequence_impl *>(other.storage));
-            }
-            else if (kind == type::mapping)
-            {
-                new (storage) mapping_impl(*reinterpret_cast<const mapping_impl *>(other.storage));
-            }
-        }
-
-        constexpr yaml_container(yaml_container &&other) : kind(other.kind)
-        {
-            if (kind == type::sequence)
-            {
-                new (storage) sequence_impl(std::move(*reinterpret_cast<sequence_impl *>(other.storage)));
-            }
-            else if (kind == type::mapping)
-            {
-                new (storage) mapping_impl(std::move(*reinterpret_cast<mapping_impl *>(other.storage)));
-            }
-        }
-
-        constexpr ~yaml_container()
-        {
-            if (kind == type::sequence)
-            {
-                reinterpret_cast<sequence_impl *>(storage)->~sequence_impl();
-            }
-            else if (kind == type::mapping)
-            {
-                reinterpret_cast<mapping_impl *>(storage)->~mapping_impl();
-            }
-        }
-
-        constexpr yaml_container &operator=(const yaml_container &other)
-        {
-            if (this != &other)
-            {
-                this->~yaml_container();
-                new (this) yaml_container(other);
-            }
-            return *this;
-        }
-
-        constexpr yaml_container &operator=(yaml_container &&other)
-        {
-            if (this != &other)
-            {
-                this->~yaml_container();
-                new (this) yaml_container(std::move(other));
-            }
-            return *this;
-        }
-
-        constexpr sequence_impl &as_sequence()
-        {
-            return *reinterpret_cast<sequence_impl *>(storage);
-        }
-
-        constexpr const sequence_impl &as_sequence() const
-        {
-            return *reinterpret_cast<const sequence_impl *>(storage);
-        }
-
-        constexpr mapping_impl &as_mapping()
-        {
-            return *reinterpret_cast<mapping_impl *>(storage);
-        }
-
-        constexpr const mapping_impl &as_mapping() const
-        {
-            return *reinterpret_cast<const mapping_impl *>(storage);
-        }
-
-        constexpr bool is_sequence() const { return kind == type::sequence; }
-        constexpr bool is_mapping() const { return kind == type::mapping; }
-    };
-
-    // The main value type - using yaml_container for recursive types
-    using yaml_value = std::variant<
+    // The main value type - forward declared yaml_container works fine in variant
+    using yaml_value = std::variant
         null_t,
-        boolean,
-        integer,
-        floating,
-        string_storage<256>,
-        yaml_container>;
+          boolean,
+          integer,
+          floating,
+          string_storage<256>,
+          yaml_container > ;
 
-    // sequence implementation that doesn't make me cry
+    // NOW define sequence_impl and mapping_impl with complete yaml_value
+    // these fuckers need to come BEFORE yaml_container implementation
     struct sequence_impl
     {
         constexpr sequence_impl() = default;
@@ -237,12 +131,10 @@ namespace yaml::ct::detail
         }
 
         [[nodiscard]] constexpr auto operator[](std::size_t idx) const noexcept
-            -> const yaml_value &
+            -> yaml_value const &
         {
             return items_[idx]; // bounds checking is for debug builds
         }
-
-        // Comparison operators removed to avoid circular dependency issues with variants
 
     private:
         std::array<yaml_value, 64> items_{};
@@ -293,19 +185,124 @@ namespace yaml::ct::detail
         }
 
         [[nodiscard]] constexpr auto operator[](std::size_t idx) const noexcept
-            -> const pair_type &
+            -> pair_type const &
         {
             return pairs_[idx];
         }
-
-        // Comparison operators removed to avoid circular dependency issues with variants
 
     private:
         std::array<pair_type, 64> pairs_{};
         std::size_t size_{0};
     };
 
-    // Template aliases for backward compatibility
+    // NOW we can properly implement yaml_container with complete types
+    // this is how you do type erasure without being a complete moron
+    struct yaml_container
+    {
+        enum class type
+        {
+            none,
+            sequence,
+            mapping
+        };
+        type kind_{type::none};
+
+        // Use aligned storage to store either type - this is actually clever unlike your previous attempt
+        alignas(alignof(sequence_impl) > alignof(mapping_impl) ? alignof(sequence_impl) : alignof(mapping_impl)) char storage_[sizeof(sequence_impl) > sizeof(mapping_impl) ? sizeof(sequence_impl) : sizeof(mapping_impl)];
+
+        constexpr yaml_container() noexcept = default;
+
+        constexpr yaml_container(sequence_impl &&s) noexcept : kind_{type::sequence}
+        {
+            new (storage_) sequence_impl(std::move(s));
+        }
+
+        constexpr yaml_container(mapping_impl &&m) noexcept : kind_{type::mapping}
+        {
+            new (storage_) mapping_impl(std::move(m));
+        }
+
+        constexpr yaml_container(yaml_container const &other) noexcept : kind_{other.kind_}
+        {
+            if (kind_ == type::sequence)
+            {
+                new (storage_) sequence_impl(*reinterpret_cast<sequence_impl const *>(other.storage_));
+            }
+            else if (kind_ == type::mapping)
+            {
+                new (storage_) mapping_impl(*reinterpret_cast<mapping_impl const *>(other.storage_));
+            }
+        }
+
+        constexpr yaml_container(yaml_container &&other) noexcept : kind_{other.kind_}
+        {
+            if (kind_ == type::sequence)
+            {
+                new (storage_) sequence_impl(std::move(*reinterpret_cast<sequence_impl *>(other.storage_)));
+            }
+            else if (kind_ == type::mapping)
+            {
+                new (storage_) mapping_impl(std::move(*reinterpret_cast<mapping_impl *>(other.storage_)));
+            }
+        }
+
+        constexpr ~yaml_container() noexcept
+        {
+            if (kind_ == type::sequence)
+            {
+                reinterpret_cast<sequence_impl *>(storage_)->~sequence_impl();
+            }
+            else if (kind_ == type::mapping)
+            {
+                reinterpret_cast<mapping_impl *>(storage_)->~mapping_impl();
+            }
+        }
+
+        constexpr auto operator=(yaml_container const &other) noexcept -> yaml_container &
+        {
+            if (this != &other)
+            {
+                this->~yaml_container();
+                new (this) yaml_container(other);
+            }
+            return *this;
+        }
+
+        constexpr auto operator=(yaml_container &&other) noexcept -> yaml_container &
+        {
+            if (this != &other)
+            {
+                this->~yaml_container();
+                new (this) yaml_container(std::move(other));
+            }
+            return *this;
+        }
+
+        [[nodiscard]] constexpr auto as_sequence() noexcept -> sequence_impl &
+        {
+            return *reinterpret_cast<sequence_impl *>(storage_);
+        }
+
+        [[nodiscard]] constexpr auto as_sequence() const noexcept -> sequence_impl const &
+        {
+            return *reinterpret_cast<sequence_impl const *>(storage_);
+        }
+
+        [[nodiscard]] constexpr auto as_mapping() noexcept -> mapping_impl &
+        {
+            return *reinterpret_cast<mapping_impl *>(storage_);
+        }
+
+        [[nodiscard]] constexpr auto as_mapping() const noexcept -> mapping_impl const &
+        {
+            return *reinterpret_cast<mapping_impl const *>(storage_);
+        }
+
+        [[nodiscard]] constexpr auto is_sequence() const noexcept -> bool { return kind_ == type::sequence; }
+        [[nodiscard]] constexpr auto is_mapping() const noexcept -> bool { return kind_ == type::mapping; }
+    };
+
+    // Template aliases for backward compatibility - because you probably have other broken code
     template <std::size_t MaxItems = 64>
     using sequence = sequence_impl;
 
@@ -321,11 +318,9 @@ namespace yaml::ct::detail
         using value_type = yaml_value;
         value_type root_{};
 
-        constexpr document() = default;
+        constexpr document() noexcept = default;
         constexpr explicit document(value_type root) noexcept
             : root_{std::move(root)} {}
-
-        // Comparison operators removed to avoid circular dependency issues with variants
     };
 
 } // namespace yaml::ct::detail

@@ -92,8 +92,8 @@ namespace yaml::ct::detail
     // yaml value types that actually make sense
     struct null_t
     {
-        constexpr bool operator==(const null_t &) const = default;
-        constexpr auto operator<=>(const null_t &) const = default;
+        constexpr bool operator==(null_t const &) const = default;
+        constexpr auto operator<=>(null_t const &) const = default;
     };
     using boolean = bool;
     using integer = std::int64_t;
@@ -103,19 +103,19 @@ namespace yaml::ct::detail
     struct yaml_container;
 
     // The main value type - forward declared yaml_container works fine in variant
-    using yaml_value = std::variant
+    using yaml_value = std::variant<
         null_t,
-          boolean,
-          integer,
-          floating,
-          string_storage<256>,
-          yaml_container > ;
+        boolean,
+        integer,
+        floating,
+        string_storage<256>,
+        yaml_container>;
 
     // NOW define sequence_impl and mapping_impl with complete yaml_value
     // these fuckers need to come BEFORE yaml_container implementation
     struct sequence_impl
     {
-        constexpr sequence_impl() = default;
+        constexpr sequence_impl() noexcept = default;
 
         constexpr auto push_back(yaml_value val) noexcept -> bool
         {
@@ -147,7 +147,7 @@ namespace yaml::ct::detail
         using key_type = string_storage<256>;
         using pair_type = std::pair<key_type, yaml_value>;
 
-        constexpr mapping_impl() = default;
+        constexpr mapping_impl() noexcept = default;
 
         constexpr auto insert(key_type key, yaml_value val) noexcept -> bool
         {
@@ -207,8 +207,13 @@ namespace yaml::ct::detail
         };
         type kind_{type::none};
 
-        // Use aligned storage to store either type - this is actually clever unlike your previous attempt
-        alignas(alignof(sequence_impl) > alignof(mapping_impl) ? alignof(sequence_impl) : alignof(mapping_impl)) char storage_[sizeof(sequence_impl) > sizeof(mapping_impl) ? sizeof(sequence_impl) : sizeof(mapping_impl)];
+        // simplified alignment - both types have same alignment anyway
+        static constexpr std::size_t storage_size_ =
+            sizeof(sequence_impl) > sizeof(mapping_impl) ? sizeof(sequence_impl) : sizeof(mapping_impl);
+        static constexpr std::size_t storage_align_ =
+            alignof(sequence_impl) > alignof(mapping_impl) ? alignof(sequence_impl) : alignof(mapping_impl);
+
+        alignas(storage_align_) char storage_[storage_size_];
 
         constexpr yaml_container() noexcept = default;
 

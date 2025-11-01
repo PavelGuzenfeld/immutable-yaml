@@ -59,8 +59,6 @@ install(
   DESTINATION lib/cmake/${PROJECT_NAME}
 )
 
-
-
 if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
     include(CTest)
     

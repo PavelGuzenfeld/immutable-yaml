@@ -1,9 +1,5 @@
 #pragma once
 
-// because apparently you need me to teach you how to write modern c++
-// this is what a real compile-time yaml parser looks like, not whatever
-// stackoverflow garbage you were about to copy-paste
-
 #include "detail/lexer.hpp"
 #include "detail/parser.hpp"
 #include "detail/types.hpp"
@@ -12,6 +8,10 @@
 #include <optional>
 #include <string_view>
 #include <variant>
+
+#ifndef YAML_CT_MAX_TOKENS
+#define YAML_CT_MAX_TOKENS 1024
+#endif
 
 namespace yaml::ct
 {
@@ -50,7 +50,7 @@ namespace yaml::ct
 
         auto yaml_view = make_yaml_view(yaml_str);
 
-        detail::lexer<1024> lexer{};
+        detail::lexer<YAML_CT_MAX_TOKENS> lexer{};
         auto tokens_result = lexer.tokenize(yaml_view);
 
         if (std::holds_alternative<error_code>(tokens_result))
@@ -58,8 +58,8 @@ namespace yaml::ct
             return std::get<error_code>(tokens_result);
         }
 
-        auto const &tokens = std::get<detail::token_array<1024>>(tokens_result);
-        auto parser = detail::parser<1024>{tokens};
+        auto const &tokens = std::get<detail::token_array<YAML_CT_MAX_TOKENS>>(tokens_result);
+        auto parser = detail::parser<YAML_CT_MAX_TOKENS>{tokens};
 
         return parser.parse_document();
     }

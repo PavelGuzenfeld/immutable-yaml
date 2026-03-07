@@ -9,6 +9,15 @@
 #include <yaml/detail/string_storage.hpp> // for string_storage
 #include <yaml/detail/utils.hpp>          // for is_alpha, is_digit, etc.
 
+// Configurable capacity limits — set via target_compile_definitions or before #include
+#ifndef YAML_CT_MAX_STRING_SIZE
+#define YAML_CT_MAX_STRING_SIZE 256
+#endif
+
+#ifndef YAML_CT_MAX_ITEMS
+#define YAML_CT_MAX_ITEMS 64
+#endif
+
 namespace yaml::ct
 {
     // forward declare error_code because apparently you don't understand dependencies
@@ -102,13 +111,15 @@ namespace yaml::ct::detail
     // Forward declare yaml_container for use in yaml_value
     struct yaml_container;
 
+    using string_type = string_storage<YAML_CT_MAX_STRING_SIZE>;
+
     // The main value type - forward declared yaml_container works fine in variant
     using yaml_value = std::variant<
         null_t,
         boolean,
         integer,
         floating,
-        string_storage<256>,
+        string_type,
         yaml_container>;
 
     // NOW define sequence_impl and mapping_impl with complete yaml_value
@@ -119,7 +130,7 @@ namespace yaml::ct::detail
 
         constexpr auto push_back(yaml_value val) noexcept -> bool
         {
-            if (size_ >= 64)
+            if (size_ >= YAML_CT_MAX_ITEMS)
                 return false; // overflow protection
             items_[size_++] = std::move(val);
             return true;
@@ -137,14 +148,14 @@ namespace yaml::ct::detail
         }
 
     private:
-        std::array<yaml_value, 64> items_{};
+        std::array<yaml_value, YAML_CT_MAX_ITEMS> items_{};
         std::size_t size_{0};
     };
 
     // mapping implementation because apparently maps are hard
     struct mapping_impl
     {
-        using key_type = string_storage<256>;
+        using key_type = string_type;
         using pair_type = std::pair<key_type, yaml_value>;
 
         constexpr mapping_impl() noexcept = default;
@@ -160,7 +171,7 @@ namespace yaml::ct::detail
                 }
             }
 
-            if (size_ >= 64)
+            if (size_ >= YAML_CT_MAX_ITEMS)
                 return false; // overflow protection
             pairs_[size_++] = {std::move(key), std::move(val)};
             return true;
@@ -191,7 +202,7 @@ namespace yaml::ct::detail
         }
 
     private:
-        std::array<pair_type, 64> pairs_{};
+        std::array<pair_type, YAML_CT_MAX_ITEMS> pairs_{};
         std::size_t size_{0};
     };
 
@@ -307,14 +318,14 @@ namespace yaml::ct::detail
         [[nodiscard]] constexpr auto is_mapping() const noexcept -> bool { return kind_ == type::mapping; }
     };
 
-    // Template aliases for backward compatibility - because you probably have other broken code
-    template <std::size_t MaxItems = 64>
+    // Template aliases for backward compatibility
+    template <std::size_t MaxItems = YAML_CT_MAX_ITEMS>
     using sequence = sequence_impl;
 
-    template <std::size_t MaxPairs = 64>
+    template <std::size_t MaxPairs = YAML_CT_MAX_ITEMS>
     using mapping = mapping_impl;
 
-    template <std::size_t MaxStringSize = 256, std::size_t MaxItems = 64>
+    template <std::size_t MaxStringSize = YAML_CT_MAX_STRING_SIZE, std::size_t MaxItems = YAML_CT_MAX_ITEMS>
     using value = yaml_value;
 
     // document structure because yaml can have multiple documents

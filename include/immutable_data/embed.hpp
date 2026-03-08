@@ -12,3 +12,4 @@
 #include <immutable_data/yaml.hpp>
 #include <immutable_data/json.hpp>
 #include <immutable_data/toml.hpp>
+#include <immutable_data/xml.hpp>

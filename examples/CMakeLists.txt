@@ -27,3 +27,8 @@ add_test(NAME example_json COMMAND example_json)
 add_executable(example_toml toml_basic.cpp)
 target_link_libraries(example_toml PRIVATE ${PROJECT_NAME})
 add_test(NAME example_toml COMMAND example_toml)
+
+# Example 6: inline constexpr XML parsing
+add_executable(example_xml xml_basic.cpp)
+target_link_libraries(example_xml PRIVATE ${PROJECT_NAME})
+add_test(NAME example_xml COMMAND example_xml)

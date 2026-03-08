@@ -139,18 +139,9 @@ constexpr auto result = yaml::ct::parse(R"({a: 1, a: 2})");
 // error_code::duplicate_key in this case
 ```
 
-## Capacity Limits
+## How Sizing Works
 
-Defaults work for most configs. Override via CMake definitions or `#define` before including:
-
-| Macro | Default | Description |
-|-------|---------|-------------|
-| `YAML_CT_MAX_STRING_SIZE` | 256 | Max bytes per string value |
-| `YAML_CT_MAX_ITEMS` | 64 | Max entries per sequence/mapping level |
-| `YAML_CT_MAX_NODES` | 256 | Total node pool size across all nesting levels |
-| `YAML_CT_MAX_TOKENS` | 1024 | Max lexer tokens |
-
-When using `yaml_embed()`, these are computed automatically from the YAML file content.
+`yaml_embed()` analyzes each YAML file at CMake configure time and sets optimal pool sizes per-target — no manual tuning required. For inline `constexpr` usage without `yaml_embed()`, generous defaults apply. Override them only if needed via `#define` before including the header (`YAML_CT_MAX_STRING_SIZE`, `YAML_CT_MAX_ITEMS`, `YAML_CT_MAX_NODES`, `YAML_CT_MAX_TOKENS`).
 
 ## Building & Testing
 

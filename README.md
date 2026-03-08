@@ -28,7 +28,7 @@ include(FetchContent)
 FetchContent_Declare(
     immutable-data-embedder
     GIT_REPOSITORY https://github.com/PavelGuzenfeld/immutable-data-embedder.git
-    GIT_TAG v0.1.0
+    GIT_TAG v0.2.0
 )
 FetchContent_MakeAvailable(immutable-data-embedder)
 
@@ -154,7 +154,7 @@ int main() {
 Both `data::yaml` and `data::json` namespaces expose the same API:
 
 ```cpp
-// Parse (returns std::expected<document, error_code>)
+// Parse (returns std::variant<document, parse_error>)
 constexpr auto result = data::yaml::parse(R"(key: value)");
 constexpr auto result = data::json::parse(R"({"key": "value"})");
 
@@ -186,6 +186,15 @@ val.as_bool()              // -> bool
 val.is_null()   val.is_bool()     val.is_int()
 val.is_float()  val.is_string()   val.is_sequence()
 val.is_mapping()
+
+// Error handling
+auto result = data::json::parse(R"({"a": 1, "a": 2})");
+auto err = std::get<data::parse_error>(result);
+err.code       // data::error_code::duplicate_key
+err.line       // 1
+err.column     // 10
+err.message()  // "duplicate key"
+data::error_message(err.code)  // same as err.message()
 ```
 
 ## How Sizing Works

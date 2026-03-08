@@ -85,8 +85,9 @@ int main() {
     constexpr auto& cfg = yaml::embedded::app_config;
 
     auto db = cfg.find(cfg.root_, "database");
-    auto host = cfg.find(*db, "host")->as_string();
+    auto host = cfg.find(*db, "host");   // yaml_value const*
     auto port = cfg.find(*db, "port")->as_int();
+    // host->as_string(), host->as_int(), etc.
 }
 ```
 
@@ -112,7 +113,7 @@ int main() {
     auto services = doc.find(doc.root_, "services");
     for (auto [name, svc] : doc.entries(*services)) {
         auto port = doc.find(svc, "port")->as_int();
-        auto proto = doc.find(svc, "proto")->as_string();
+        auto proto = doc.find(svc, "proto")->as_string();  // safe: pointer into static storage
     }
 
     // Iterate sequence values
@@ -136,7 +137,7 @@ constexpr auto doc = yaml::ct::parse_or_throw(R"(key: value)");
 constexpr bool ok = yaml::ct::is_valid(R"(key: value)");
 
 // Document access
-doc.find(node, "key")      // -> std::optional<yaml_value>
+doc.find(node, "key")      // -> yaml_value const* (nullptr if not found)
 doc.at(node, index)        // -> yaml_value const&
 doc.size(node)             // -> std::size_t
 doc.key_at(node, index)    // -> std::string_view

@@ -23,7 +23,7 @@ static_assert(!yaml::ct::is_valid(R"({a: 1, a: duplicate})"));
 int main()
 {
     auto server = doc.find(doc.root_, "server");
-    assert(server.has_value());
+    assert(server);
 
     assert(doc.find(*server, "host")->as_string() == "0.0.0.0");
     assert(doc.find(*server, "port")->as_int() == 8080);

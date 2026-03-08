@@ -2,7 +2,6 @@
 
 #include <array>
 #include <memory> // for std::construct_at, std::destroy_at
-#include <optional>
 #include <string_view>
 #include <utility>
 #include <immutable_yaml/detail/string_storage.hpp>
@@ -358,19 +357,19 @@ namespace yaml::ct::detail
             return start;
         }
 
-        // find a key in a mapping value
+        // find a key in a mapping value — returns pointer into pool (nullptr if not found)
         [[nodiscard]] constexpr auto find(yaml_value const &v, std::string_view key) const noexcept
-            -> std::optional<yaml_value>
+            -> yaml_value const *
         {
             if (v.kind_ != yaml_value::kind::mapping)
-                return std::nullopt;
+                return nullptr;
             for (std::size_t i = 0; i < v.data_.children_.count; ++i)
             {
                 auto &entry = pool_[v.data_.children_.start + i];
                 if (entry.key.view() == key)
-                    return entry.value;
+                    return &entry.value;
             }
-            return std::nullopt;
+            return nullptr;
         }
 
         // get sequence element by index

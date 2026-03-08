@@ -18,14 +18,14 @@ TEST_CASE("embed: sample_config")
     static_assert(doc.root_.is_mapping());
 
     auto db = doc.find(doc.root_, "database");
-    REQUIRE(db.has_value());
+    REQUIRE(db);
     CHECK(db->is_mapping());
     CHECK(doc.find(*db, "host")->as_string() == "localhost");
     CHECK(doc.find(*db, "port")->as_int() == 5432);
     CHECK(doc.find(*db, "ssl")->as_bool() == true);
 
     auto cache = doc.find(doc.root_, "cache");
-    REQUIRE(cache.has_value());
+    REQUIRE(cache);
     CHECK(doc.find(*cache, "ttl")->as_int() == 3600);
 }
 
@@ -47,22 +47,22 @@ TEST_CASE("edge: nested")
     constexpr auto& doc = yaml::embedded::edge_nested;
 
     auto l1 = doc.find(doc.root_, "level1");
-    REQUIRE(l1.has_value());
+    REQUIRE(l1);
 
     auto l2 = doc.find(*l1, "level2");
-    REQUIRE(l2.has_value());
+    REQUIRE(l2);
 
     auto l3 = doc.find(*l2, "level3");
-    REQUIRE(l3.has_value());
+    REQUIRE(l3);
 
     auto l4 = doc.find(*l3, "level4");
-    REQUIRE(l4.has_value());
+    REQUIRE(l4);
 
     CHECK(doc.find(*l4, "value")->as_string() == "deep");
     CHECK(doc.find(*l3, "sibling")->as_int() == 42);
 
     auto other = doc.find(*l1, "other");
-    REQUIRE(other.has_value());
+    REQUIRE(other);
     CHECK(doc.find(*other, "flag")->as_bool() == true);
     CHECK(doc.find(*other, "count")->as_int() == 0);
 }
@@ -88,10 +88,11 @@ TEST_CASE("edge: long strings")
     CHECK(doc.find(doc.root_, "short")->as_string() == "hi");
     CHECK(doc.find(doc.root_, "medium")->as_string() == "the quick brown fox jumps over the lazy dog");
 
-    auto long_val = doc.find(doc.root_, "long_value")->as_string();
-    CHECK(long_val.size() == 99);
-    CHECK(long_val.starts_with("abcdef"));
-    CHECK(long_val.ends_with("6789"));
+    auto long_node = doc.find(doc.root_, "long_value");
+    REQUIRE(long_node);
+    CHECK(long_node->as_string().size() == 99);
+    CHECK(long_node->as_string().starts_with("abcdef"));
+    CHECK(long_node->as_string().ends_with("6789"));
 
     CHECK(doc.find(doc.root_, "path")->as_string() == "/usr/local/share/some/deeply/nested/directory/structure/config.yaml");
 }
@@ -123,7 +124,7 @@ TEST_CASE("edge: sequences")
     constexpr auto& doc = yaml::embedded::edge_sequences;
 
     auto colors = doc.find(doc.root_, "colors");
-    REQUIRE(colors.has_value());
+    REQUIRE(colors);
     CHECK(colors->is_sequence());
     CHECK(doc.size(*colors) == 3);
     CHECK(doc.at(*colors, 0).as_string() == "red");
@@ -131,13 +132,13 @@ TEST_CASE("edge: sequences")
     CHECK(doc.at(*colors, 2).as_string() == "blue");
 
     auto numbers = doc.find(doc.root_, "numbers");
-    REQUIRE(numbers.has_value());
+    REQUIRE(numbers);
     CHECK(doc.size(*numbers) == 5);
     CHECK(doc.at(*numbers, 0).as_int() == 1);
     CHECK(doc.at(*numbers, 4).as_int() == 5);
 
     auto mixed = doc.find(doc.root_, "mixed");
-    REQUIRE(mixed.has_value());
+    REQUIRE(mixed);
     CHECK(doc.size(*mixed) == 4);
     CHECK(doc.at(*mixed, 0).is_string());
     CHECK(doc.at(*mixed, 1).is_int());
@@ -153,13 +154,13 @@ TEST_CASE("edge: comments")
     static_assert(doc.root_.is_mapping());
 
     auto db = doc.find(doc.root_, "database");
-    REQUIRE(db.has_value());
+    REQUIRE(db);
     CHECK(db->is_mapping());
     CHECK(doc.find(*db, "host")->as_string() == "localhost");
     CHECK(doc.find(*db, "port")->as_int() == 5432);
 
     auto cache = doc.find(doc.root_, "cache");
-    REQUIRE(cache.has_value());
+    REQUIRE(cache);
     CHECK(doc.find(*cache, "ttl")->as_int() == 3600);
 }
 
@@ -170,7 +171,7 @@ TEST_CASE("embed: iterate sequence values")
     constexpr auto& doc = yaml::embedded::edge_sequences;
 
     auto colors = doc.find(doc.root_, "colors");
-    REQUIRE(colors.has_value());
+    REQUIRE(colors);
     std::size_t count = 0;
     for (auto const& val : doc.values(*colors))
     {
@@ -180,7 +181,7 @@ TEST_CASE("embed: iterate sequence values")
     CHECK(count == 3);
 
     auto numbers = doc.find(doc.root_, "numbers");
-    REQUIRE(numbers.has_value());
+    REQUIRE(numbers);
     std::int64_t sum = 0;
     for (auto const& val : doc.values(*numbers))
         sum += val.as_int();
@@ -206,11 +207,11 @@ TEST_CASE("embed: iterate nested tree")
     constexpr auto& doc = yaml::embedded::edge_nested;
 
     auto l1 = doc.find(doc.root_, "level1");
-    REQUIRE(l1.has_value());
+    REQUIRE(l1);
     auto l2 = doc.find(*l1, "level2");
-    REQUIRE(l2.has_value());
+    REQUIRE(l2);
     auto l3 = doc.find(*l2, "level3");
-    REQUIRE(l3.has_value());
+    REQUIRE(l3);
 
     std::size_t count = 0;
     for (auto [key, val] : doc.entries(*l3))
@@ -222,7 +223,7 @@ TEST_CASE("embed: iterate nested tree")
     CHECK(count == 2);
 
     auto l4 = doc.find(*l3, "level4");
-    REQUIRE(l4.has_value());
+    REQUIRE(l4);
     for (auto [key, val] : doc.entries(*l4))
     {
         CHECK(key == "value");

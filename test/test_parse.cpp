@@ -65,13 +65,13 @@ static_assert(std::get<error_code>(bad_result) == error_code::duplicate_key);
 TEST_CASE("simple key-value")
 {
     auto name = simple.find(simple.root_, "name");
-    REQUIRE(name.has_value());
+    REQUIRE(name);
     CHECK(name->as_string() == "test");
 }
 
 TEST_CASE("integer value")
 {
-    REQUIRE(int_doc.find(int_doc.root_, "count").has_value());
+    REQUIRE(int_doc.find(int_doc.root_, "count"));
     CHECK(int_doc.find(int_doc.root_, "count")->as_int() == 42);
 }
 
@@ -101,7 +101,7 @@ TEST_CASE("flow mapping")
 TEST_CASE("nested mapping")
 {
     auto outer = nested.find(nested.root_, "outer");
-    REQUIRE(outer.has_value());
+    REQUIRE(outer);
     CHECK(nested.find(*outer, "inner")->as_int() == 99);
 }
 
@@ -116,7 +116,7 @@ TEST_CASE("multiple keys")
 TEST_CASE("block sequence")
 {
     auto items = block_seq.find(block_seq.root_, "items");
-    REQUIRE(items.has_value());
+    REQUIRE(items);
     CHECK(items->is_sequence());
     CHECK(block_seq.size(*items) == 3);
     CHECK(block_seq.at(*items, 0).as_string() == "one");
@@ -190,7 +190,7 @@ TEST_CASE("iterate mapping entries")
 TEST_CASE("iterate nested block sequence")
 {
     auto items = block_seq.find(block_seq.root_, "items");
-    REQUIRE(items.has_value());
+    REQUIRE(items);
     std::size_t count = 0;
     for (auto const& val : block_seq.values(*items))
     {

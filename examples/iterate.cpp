@@ -32,10 +32,10 @@ int main()
     for (auto [name, svc] : doc.entries(*services))
     {
         auto port = doc.find(svc, "port")->as_int();
-        auto proto = doc.find(svc, "proto")->as_string();
+        auto proto = doc.find(svc, "proto");
         std::printf("  %.*s: %.*s://localhost:%lld\n",
             static_cast<int>(name.size()), name.data(),
-            static_cast<int>(proto.size()), proto.data(),
+            static_cast<int>(proto->as_string().size()), proto->as_string().data(),
             static_cast<long long>(port));
     }
 

@@ -1,0 +1,7 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+includedir=${prefix}/include
+
+Name: immutable-data-embedder
+Description: Compile-time YAML, JSON, TOML, and XML parser for C++23
+Version: @PROJECT_VERSION@
+Cflags: -I${includedir} -std=c++23

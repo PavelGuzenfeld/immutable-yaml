@@ -1,23 +1,51 @@
 # immutable-yaml
 
-Compile-time YAML parser for C++23. Parse YAML at compile time, embed configs as constexpr data with zero runtime overhead.
+[![CI](https://github.com/PavelGuzenfeld/immutable-yaml/actions/workflows/ci.yml/badge.svg)](https://github.com/PavelGuzenfeld/immutable-yaml/actions/workflows/ci.yml)
+
+Compile-time YAML parser for C++23. Parse YAML at compile time, embed configs as `constexpr` data with zero runtime overhead.
 
 ## Features
 
 - **Compile-time parsing** — all YAML parsing happens at compile time via `constexpr`
-- **Zero runtime overhead** — parsed data lives in static storage, no allocations
+- **Zero runtime overhead** — parsed data lives in static storage, no heap allocations
 - **CMake integration** — `yaml_embed()` auto-generates headers from YAML files with optimal sizing
 - **Compile-time validation** — catches syntax errors, duplicate keys, and type issues before your code runs
-- **Header-only** — requires only C++23 standard library
+- **Comment stripping** — full-line comments are stripped at build time; inline comments are handled by the lexer
+- **Header-only** — single include, no dependencies beyond C++23 standard library
 
 ## Requirements
 
 - C++23 compiler (tested: GCC 15+)
 - CMake 3.22+
 
+## Installation
+
+### CMake FetchContent
+
+```cmake
+include(FetchContent)
+FetchContent_Declare(
+    immutable-yaml
+    GIT_REPOSITORY https://github.com/PavelGuzenfeld/immutable-yaml.git
+    GIT_TAG v0.0.1
+)
+FetchContent_MakeAvailable(immutable-yaml)
+
+target_link_libraries(my_app PRIVATE immutable-yaml)
+```
+
+### System install
+
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --install build --prefix /usr/local
+```
+
 ## Quick Start
 
 ### Option 1: CMake yaml_embed (recommended)
+
+Embed YAML files as compile-time constants. Allocation sizes are computed automatically from the YAML content.
 
 ```cmake
 find_package(immutable-yaml REQUIRED)
@@ -41,8 +69,6 @@ int main() {
 }
 ```
 
-`yaml_embed()` analyzes your YAML files at configure time and sets optimal allocation sizes automatically.
-
 ### Option 2: Inline constexpr
 
 ```cpp
@@ -62,9 +88,11 @@ static_assert(!yaml::ct::is_valid(R"({a: 1, a: duplicate})"));
 
 ## API
 
-The parsed document stores values in a flat node pool. Scalars are accessed directly on `yaml_value`; containers are accessed through the `document`.
+The parsed document uses a flat node pool architecture. Scalars are accessed directly on `yaml_value`; containers are navigated through the `document`.
 
 ```cpp
+#include <immutable_yaml/immutable_yaml.hpp>
+
 constexpr auto doc = yaml::ct::parse_or_throw(R"(
 name: "test"
 count: 42

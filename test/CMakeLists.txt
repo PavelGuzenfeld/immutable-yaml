@@ -1,32 +1,17 @@
 include(${CMAKE_SOURCE_DIR}/cmake/YamlEmbed.cmake)
 
-# Legacy tests (require fmt + cmake-library)
-find_package(fmt QUIET)
-find_package(cmake-library QUIET)
+# --- Parse API tests (no external deps) ---
 
-if(fmt_FOUND AND cmake-library_FOUND)
-    add_executable(${PROJECT_NAME}_test test_main.cpp)
-    target_link_libraries(${PROJECT_NAME}_test PRIVATE ${PROJECT_NAME} fmt)
-    set_warnings_and_errors(${PROJECT_NAME}_test)
-    add_test(NAME yaml_parse_test COMMAND ${PROJECT_NAME}_test)
+add_executable(${PROJECT_NAME}_test test_main.cpp)
+target_link_libraries(${PROJECT_NAME}_test PRIVATE ${PROJECT_NAME})
+add_test(NAME yaml_parse_test COMMAND ${PROJECT_NAME}_test)
 
-    add_executable(${PROJECT_NAME}_test_negative test_negative.cpp)
-    target_link_libraries(${PROJECT_NAME}_test_negative PRIVATE ${PROJECT_NAME} fmt)
-    set_warnings_and_errors(${PROJECT_NAME}_test_negative)
-    add_test(NAME yaml_negative_test COMMAND ${PROJECT_NAME}_test_negative)
+add_executable(${PROJECT_NAME}_test_negative test_negative.cpp)
+target_link_libraries(${PROJECT_NAME}_test_negative PRIVATE ${PROJECT_NAME})
+add_test(NAME yaml_negative_test COMMAND ${PROJECT_NAME}_test_negative)
 
-    install(
-        TARGETS ${PROJECT_NAME}_test_negative ${PROJECT_NAME}_test
-        EXPORT ${PROJECT_NAME}Targets
-        DESTINATION bin
-    )
-else()
-    message(STATUS "Skipping legacy tests (fmt or cmake-library not found)")
-endif()
+# --- Embed integration tests ---
 
-# --- Embed integration tests (self-contained, no external deps) ---
-
-# Basic embed test
 add_executable(${PROJECT_NAME}_test_embed test_embed.cpp)
 target_link_libraries(${PROJECT_NAME}_test_embed PRIVATE ${PROJECT_NAME})
 yaml_embed(${PROJECT_NAME}_test_embed
@@ -34,7 +19,7 @@ yaml_embed(${PROJECT_NAME}_test_embed
 )
 add_test(NAME yaml_embed_basic COMMAND ${PROJECT_NAME}_test_embed)
 
-# Edge case tests
+# Edge case tests (includes iteration over sequences, mappings, and tree)
 add_executable(${PROJECT_NAME}_test_edge_cases test_edge_cases.cpp)
 target_link_libraries(${PROJECT_NAME}_test_edge_cases PRIVATE ${PROJECT_NAME})
 yaml_embed(${PROJECT_NAME}_test_edge_cases
@@ -55,6 +40,8 @@ add_test(NAME yaml_constexpr COMMAND ${PROJECT_NAME}_test_constexpr)
 
 install(
     TARGETS
+    ${PROJECT_NAME}_test
+    ${PROJECT_NAME}_test_negative
     ${PROJECT_NAME}_test_embed
     ${PROJECT_NAME}_test_edge_cases
     ${PROJECT_NAME}_test_constexpr

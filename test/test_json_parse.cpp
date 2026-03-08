@@ -172,6 +172,58 @@ TEST_CASE("json: error_message function")
     CHECK(data::error_message(data::error_code::trailing_comma) == "trailing comma");
 }
 
+TEST_CASE("json: escape sequences")
+{
+    constexpr auto doc = parse_or_throw(R"({"msg": "hello\nworld", "tab": "a\tb", "quote": "say \"hi\""})");
+    CHECK(doc.find(doc.root_, "msg")->as_string() == "hello\nworld");
+    CHECK(doc.find(doc.root_, "tab")->as_string() == "a\tb");
+    CHECK(doc.find(doc.root_, "quote")->as_string() == "say \"hi\"");
+}
+
+TEST_CASE("json: escape sequences - special chars")
+{
+    constexpr auto doc = parse_or_throw(R"({"bs": "a\\b", "slash": "a\/b", "cr": "a\rb", "bs_char": "a\bb", "ff": "a\fb"})");
+    CHECK(doc.find(doc.root_, "bs")->as_string() == "a\\b");
+    CHECK(doc.find(doc.root_, "slash")->as_string() == "a/b");
+    CHECK(doc.find(doc.root_, "cr")->as_string() == "a\rb");
+    CHECK(doc.find(doc.root_, "bs_char")->as_string() == "a\bb");
+    CHECK(doc.find(doc.root_, "ff")->as_string() == "a\fb");
+}
+
+TEST_CASE("json: unicode escape - basic")
+{
+    // \u0041 = 'A'
+    constexpr auto doc = parse_or_throw(R"({"ch": "\u0041"})");
+    CHECK(doc.find(doc.root_, "ch")->as_string() == "A");
+}
+
+TEST_CASE("json: unicode escape - multi-byte UTF-8")
+{
+    // \u00E9 = 'é' (2-byte UTF-8: 0xC3 0xA9)
+    constexpr auto doc = parse_or_throw(R"({"ch": "\u00E9"})");
+    auto sv = doc.find(doc.root_, "ch")->as_string();
+    CHECK(sv.size() == 2);
+    CHECK(static_cast<unsigned char>(sv[0]) == 0xC3);
+    CHECK(static_cast<unsigned char>(sv[1]) == 0xA9);
+}
+
+TEST_CASE("json: unicode escape - 3-byte UTF-8")
+{
+    // \u4E16 = '世' (3-byte UTF-8: 0xE4 0xB8 0x96)
+    constexpr auto doc = parse_or_throw(R"({"ch": "\u4E16"})");
+    auto sv = doc.find(doc.root_, "ch")->as_string();
+    CHECK(sv.size() == 3);
+    CHECK(static_cast<unsigned char>(sv[0]) == 0xE4);
+    CHECK(static_cast<unsigned char>(sv[1]) == 0xB8);
+    CHECK(static_cast<unsigned char>(sv[2]) == 0x96);
+}
+
+TEST_CASE("json: no escapes - fast path")
+{
+    constexpr auto doc = parse_or_throw(R"({"plain": "no escapes here"})");
+    CHECK(doc.find(doc.root_, "plain")->as_string() == "no escapes here");
+}
+
 TEST_CASE("json: scalar root values")
 {
     constexpr auto num = parse_or_throw(R"(42)");

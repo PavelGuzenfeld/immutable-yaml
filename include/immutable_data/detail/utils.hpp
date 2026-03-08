@@ -22,4 +22,12 @@ namespace data::detail
         return is_digit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
     }
 
+    constexpr unsigned hex_value(char c) noexcept
+    {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'a' && c <= 'f') return 10 + (c - 'a');
+        if (c >= 'A' && c <= 'F') return 10 + (c - 'A');
+        return 0;
+    }
+
 } // namespace data::detail

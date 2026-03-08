@@ -105,10 +105,98 @@ namespace data::json::detail
             if (tok.type_ != token_type::quoted_string)
                 return make_error(data::error_code::unexpected_token);
             advance();
-            std::string_view content = tok.value_;
-            if (content.size() >= 2)
-                content = content.substr(1, content.size() - 2);
-            return string_type{content};
+            std::string_view raw = tok.value_;
+            if (raw.size() < 2)
+                return string_type{};
+
+            // Strip surrounding quotes
+            raw = raw.substr(1, raw.size() - 2);
+
+            // Fast path: no backslashes means no escapes
+            bool has_escape = false;
+            for (auto c : raw)
+                if (c == '\\') { has_escape = true; break; }
+            if (!has_escape)
+                return string_type{raw};
+
+            // Process escape sequences
+            string_type result{};
+            for (std::size_t i = 0; i < raw.size(); ++i)
+            {
+                if (raw[i] != '\\')
+                {
+                    result.push_back(raw[i]);
+                    continue;
+                }
+                if (++i >= raw.size())
+                    break;
+                switch (raw[i])
+                {
+                case '"':  result.push_back('"');  break;
+                case '\\': result.push_back('\\'); break;
+                case '/':  result.push_back('/');  break;
+                case 'b':  result.push_back('\b'); break;
+                case 'f':  result.push_back('\f'); break;
+                case 'n':  result.push_back('\n'); break;
+                case 'r':  result.push_back('\r'); break;
+                case 't':  result.push_back('\t'); break;
+                case 'u':
+                {
+                    if (i + 4 >= raw.size())
+                        break;
+                    std::uint32_t cp = 0;
+                    for (int k = 0; k < 4; ++k)
+                        cp = (cp << 4) | hex_value(raw[i + 1 + k]);
+                    i += 4;
+
+                    // Handle surrogate pairs
+                    if (cp >= 0xD800 && cp <= 0xDBFF &&
+                        i + 2 < raw.size() && raw[i + 1] == '\\' && raw[i + 2] == 'u')
+                    {
+                        if (i + 6 < raw.size())
+                        {
+                            std::uint32_t lo = 0;
+                            for (int k = 0; k < 4; ++k)
+                                lo = (lo << 4) | hex_value(raw[i + 3 + k]);
+                            if (lo >= 0xDC00 && lo <= 0xDFFF)
+                            {
+                                cp = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
+                                i += 6;
+                            }
+                        }
+                    }
+
+                    // Encode as UTF-8
+                    if (cp < 0x80)
+                    {
+                        result.push_back(static_cast<char>(cp));
+                    }
+                    else if (cp < 0x800)
+                    {
+                        result.push_back(static_cast<char>(0xC0 | (cp >> 6)));
+                        result.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+                    }
+                    else if (cp < 0x10000)
+                    {
+                        result.push_back(static_cast<char>(0xE0 | (cp >> 12)));
+                        result.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+                        result.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+                    }
+                    else
+                    {
+                        result.push_back(static_cast<char>(0xF0 | (cp >> 18)));
+                        result.push_back(static_cast<char>(0x80 | ((cp >> 12) & 0x3F)));
+                        result.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+                        result.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+                    }
+                    break;
+                }
+                default:
+                    result.push_back(raw[i]);
+                    break;
+                }
+            }
+            return result;
         }
 
         constexpr auto parse_string_value() noexcept -> std::variant<value, data::parse_error>

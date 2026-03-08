@@ -1,0 +1,15 @@
+title = "App Settings"
+
+[database]
+host = "localhost"
+port = 5432
+ssl = true
+
+[cache]
+ttl = 3600
+max_size = 1024
+
+[features]
+auth = true
+logging = true
+metrics = false

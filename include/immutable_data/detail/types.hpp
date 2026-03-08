@@ -92,6 +92,8 @@ namespace data::detail
         mapping_start,
         mapping_end,
         comma,
+        equals,
+        dot,
         string_literal,
         integer_literal,
         float_literal,

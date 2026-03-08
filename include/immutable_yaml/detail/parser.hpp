@@ -324,8 +324,10 @@ namespace yaml::ct::detail
         {
             std::array<yaml_value, YAML_CT_MAX_ITEMS> temp{};
             std::size_t count = 0;
+            auto expected_col = current_token().column_;
 
-            while (current_token().type_ == token_type::sequence_entry)
+            while (current_token().type_ == token_type::sequence_entry &&
+                   current_token().column_ == expected_col)
             {
                 advance(); // skip -
 
@@ -355,9 +357,11 @@ namespace yaml::ct::detail
         {
             std::array<pool_entry, YAML_CT_MAX_ITEMS> temp{};
             std::size_t count = 0;
+            auto expected_col = current_token().column_;
 
-            while (current_token().type_ == token_type::string_literal ||
-                   current_token().type_ == token_type::quoted_string)
+            while ((current_token().type_ == token_type::string_literal ||
+                    current_token().type_ == token_type::quoted_string) &&
+                   current_token().column_ == expected_col)
             {
                 // parse key
                 auto key_result = parse_string_raw();

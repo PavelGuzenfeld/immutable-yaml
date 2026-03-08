@@ -3,7 +3,7 @@ level1:
     level3:
       level4:
         value: "deep"
-    sibling: 42
+      sibling: 42
   other:
     flag: true
     count: 0

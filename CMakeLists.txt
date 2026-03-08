@@ -69,8 +69,12 @@ install(
 
 if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
     include(CTest)
-    
+
     if(BUILD_TESTING)
         add_subdirectory(test)
+        add_subdirectory(examples)
     endif()
 endif()
+
+# When consumed via FetchContent/add_subdirectory, tests and examples
+# are not built — only the header-only library target is exported.

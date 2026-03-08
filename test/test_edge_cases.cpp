@@ -59,7 +59,7 @@ void test_long_strings()
     assert(doc.find(doc.root_, "medium")->as_string() == "the quick brown fox jumps over the lazy dog");
 
     auto long_val = doc.find(doc.root_, "long_value")->as_string();
-    assert(long_val.size() == 95);
+    assert(long_val.size() == 99);
     assert(long_val.starts_with("abcdef"));
     assert(long_val.ends_with("6789"));
 

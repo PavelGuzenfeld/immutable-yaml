@@ -12,7 +12,7 @@ RUN g++ --version | head -1 && cmake --version | head -1
 
 RUN cmake -B build \
     -DCMAKE_CXX_STANDARD=23 \
-    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_BUILD_TYPE=Debug \
     -DBUILD_TESTING=ON \
     && cmake --build build -j$(nproc)
 

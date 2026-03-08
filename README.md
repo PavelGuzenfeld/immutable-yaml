@@ -11,6 +11,7 @@ Compile-time YAML parser for C++23. Parse YAML at compile time, embed configs as
 - **CMake integration** — `yaml_embed()` auto-generates headers from YAML files with optimal sizing
 - **Compile-time validation** — catches syntax errors, duplicate keys, and type issues before your code runs
 - **Comment stripping** — full-line comments are stripped at build time; inline comments are handled by the lexer
+- **Iteration** — range-based for over sequences (`values()`) and mapping entries (`entries()`)
 - **Header-only** — single include, no dependencies beyond C++23 standard library
 
 ## Requirements
@@ -41,109 +42,119 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --install build --prefix /usr/local
 ```
 
-## Quick Start
+## Examples
 
-### Option 1: CMake yaml_embed (recommended)
+Full working examples in [`examples/`](examples/).
 
-Embed YAML files as compile-time constants. Allocation sizes are computed automatically from the YAML content.
-
-```cmake
-find_package(immutable-yaml REQUIRED)
-include(YamlEmbed)
-
-add_executable(my_app main.cpp)
-target_link_libraries(my_app PRIVATE immutable-yaml)
-yaml_embed(my_app config.yaml)
-```
-
-```cpp
-#include "config.yaml.hpp"
-
-int main() {
-    constexpr auto& doc = yaml::embedded::config;
-
-    auto host = doc.find(doc.root_, "host");
-    if (host) {
-        // host->as_string() returns std::string_view
-    }
-}
-```
-
-### Option 2: Inline constexpr
-
-```cpp
-#include <immutable_yaml/immutable_yaml.hpp>
-
-constexpr auto config = yaml::ct::parse_or_throw(R"(
-database:
-  host: "localhost"
-  port: 5432
-  ssl: true
-)");
-
-// Compile-time validation
-static_assert(yaml::ct::is_valid(R"(key: value)"));
-static_assert(!yaml::ct::is_valid(R"({a: 1, a: duplicate})"));
-```
-
-## API
-
-The parsed document uses a flat node pool architecture. Scalars are accessed directly on `yaml_value`; containers are navigated through the `document`.
+### Inline constexpr parsing ([basic.cpp](examples/basic.cpp))
 
 ```cpp
 #include <immutable_yaml/immutable_yaml.hpp>
 
 constexpr auto doc = yaml::ct::parse_or_throw(R"(
-name: "test"
-count: 42
-pi: 3.14
-active: true
-items:
-  - "one"
-  - "two"
+server:
+  host: "0.0.0.0"
+  port: 8080
+  workers: 4
+debug: false
 )");
 
+static_assert(doc.root_.is_mapping());
+static_assert(yaml::ct::is_valid(R"(key: value)"));
+static_assert(!yaml::ct::is_valid(R"({a: 1, a: duplicate})"));
+
+int main() {
+    auto server = doc.find(doc.root_, "server");
+    // server->as_string(), as_int(), as_bool(), as_float()
+    assert(doc.find(*server, "port")->as_int() == 8080);
+}
+```
+
+### Embed YAML files ([embed.cpp](examples/embed.cpp))
+
+```cmake
+# CMakeLists.txt
+include(YamlEmbed)
+yaml_embed(my_app app_config.yaml)
+```
+
+```cpp
+#include "app_config.yaml.hpp"
+
+int main() {
+    constexpr auto& cfg = yaml::embedded::app_config;
+
+    auto db = cfg.find(cfg.root_, "database");
+    auto host = cfg.find(*db, "host")->as_string();
+    auto port = cfg.find(*db, "port")->as_int();
+}
+```
+
+### Iterate sequences and mappings ([iterate.cpp](examples/iterate.cpp))
+
+```cpp
+constexpr auto doc = yaml::ct::parse_or_throw(R"(
+services:
+  web:
+    port: 80
+    proto: "http"
+  api:
+    port: 443
+    proto: "https"
+ports:
+  - 80
+  - 443
+  - 1883
+)");
+
+int main() {
+    // Iterate mapping entries with structured bindings
+    auto services = doc.find(doc.root_, "services");
+    for (auto [name, svc] : doc.entries(*services)) {
+        auto port = doc.find(svc, "port")->as_int();
+        auto proto = doc.find(svc, "proto")->as_string();
+    }
+
+    // Iterate sequence values
+    auto ports = doc.find(doc.root_, "ports");
+    for (auto const& val : doc.values(*ports)) {
+        val.as_int();  // 80, 443, 1883
+    }
+}
+```
+
+## API Reference
+
+```cpp
+// Parse (returns std::variant<document, error_code>)
+constexpr auto result = yaml::ct::parse(R"(key: value)");
+
+// Parse or compile-time error
+constexpr auto doc = yaml::ct::parse_or_throw(R"(key: value)");
+
+// Compile-time validation
+constexpr bool ok = yaml::ct::is_valid(R"(key: value)");
+
+// Document access
+doc.find(node, "key")      // -> std::optional<yaml_value>
+doc.at(node, index)        // -> yaml_value const&
+doc.size(node)             // -> std::size_t
+doc.key_at(node, index)    // -> std::string_view
+
+// Iteration
+doc.values(node)           // range of yaml_value (sequence or mapping)
+doc.entries(node)           // range of {key, value} (mapping only)
+
+// Scalar accessors
+val.as_string()            // -> std::string_view
+val.as_int()               // -> int64_t
+val.as_float()             // -> double
+val.as_bool()              // -> bool
+
 // Type checks
-doc.root_.is_mapping();   // true
-
-// Mapping lookup — returns std::optional<yaml_value>
-auto name = doc.find(doc.root_, "name");
-name->as_string();        // "test" (std::string_view)
-
-auto count = doc.find(doc.root_, "count");
-count->as_int();          // 42 (int64_t)
-
-auto pi = doc.find(doc.root_, "pi");
-pi->as_float();           // 3.14 (double)
-
-auto active = doc.find(doc.root_, "active");
-active->as_bool();        // true
-
-// Sequence access by index
-auto items = doc.find(doc.root_, "items");
-doc.size(*items);         // 2
-doc.at(*items, 0).as_string();  // "one"
-
-// Iterate sequence values
-for (auto const& val : doc.values(*items)) {
-    val.as_string();  // "one", "two"
-}
-
-// Iterate mapping entries (structured bindings)
-for (auto [key, val] : doc.entries(doc.root_)) {
-    // key is std::string_view, val is yaml_value const&
-}
-
-// Type checks on any value
-value.is_null();    value.is_bool();
-value.is_int();     value.is_float();
-value.is_string();  value.is_sequence();
-value.is_mapping();
-
-// Error handling without exceptions
-constexpr auto result = yaml::ct::parse(R"({a: 1, a: 2})");
-// result is std::variant<document, error_code>
-// error_code::duplicate_key in this case
+val.is_null()   val.is_bool()     val.is_int()
+val.is_float()  val.is_string()   val.is_sequence()
+val.is_mapping()
 ```
 
 ## How Sizing Works
@@ -164,6 +175,8 @@ cmake -B build -DCMAKE_CXX_STANDARD=23 -DBUILD_TESTING=ON
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
+
+Tests and examples are only built when `BUILD_TESTING=ON` and the project is the top-level CMake project. Consumers via `FetchContent` or `add_subdirectory` get only the header-only library target.
 
 ## License
 

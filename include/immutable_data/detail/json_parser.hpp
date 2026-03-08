@@ -35,8 +35,19 @@ namespace data::json::detail
             return {ec, tok.line_, tok.column_};
         }
 
+        struct depth_guard
+        {
+            std::size_t &depth_;
+            constexpr explicit depth_guard(std::size_t &d) noexcept : depth_{d} { ++depth_; }
+            constexpr ~depth_guard() noexcept { --depth_; }
+        };
+
         constexpr auto parse_value() noexcept -> std::variant<value, data::parse_error>
         {
+            if (depth_ >= MAX_PARSE_DEPTH)
+                return make_error(data::error_code::max_depth_exceeded);
+            depth_guard guard{depth_};
+
             const auto &tok = current_token();
             switch (tok.type_)
             {
@@ -241,6 +252,8 @@ namespace data::json::detail
                 return make_error(data::error_code::unexpected_token);
             advance();
 
+            if (!doc_.can_alloc(count))
+                return make_error(data::error_code::pool_overflow);
             auto start = doc_.pool_size_;
             for (std::size_t i = 0; i < count; ++i)
             {
@@ -302,6 +315,8 @@ namespace data::json::detail
                 return make_error(data::error_code::unexpected_token);
             advance();
 
+            if (!doc_.can_alloc(count))
+                return make_error(data::error_code::pool_overflow);
             auto start = doc_.pool_size_;
             for (std::size_t i = 0; i < count; ++i)
                 doc_.pool_[doc_.pool_size_++] = temp[i];
@@ -311,6 +326,7 @@ namespace data::json::detail
         const token_array<MaxTokens> &tokens_;
         document &doc_;
         std::size_t position_{0};
+        std::size_t depth_{0};
     };
 
 } // namespace data::json::detail

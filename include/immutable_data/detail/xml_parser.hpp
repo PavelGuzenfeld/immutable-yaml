@@ -51,6 +51,13 @@ namespace data::xml::detail
             return {ec, line_, col_};
         }
 
+        struct depth_guard
+        {
+            std::size_t &depth_;
+            constexpr explicit depth_guard(std::size_t &d) noexcept : depth_{d} { ++depth_; }
+            constexpr ~depth_guard() noexcept { --depth_; }
+        };
+
         constexpr void skip_whitespace() noexcept
         {
             while (!at_end() && (peek() == ' ' || peek() == '\t' || peek() == '\n' || peek() == '\r'))
@@ -198,6 +205,10 @@ namespace data::xml::detail
 
         constexpr auto parse_element() noexcept -> std::variant<pool_entry, data::parse_error>
         {
+            if (depth_ >= MAX_PARSE_DEPTH)
+                return make_error(data::error_code::max_depth_exceeded);
+            depth_guard guard{depth_};
+
             skip_whitespace();
             skip_comments();
 
@@ -241,6 +252,8 @@ namespace data::xml::detail
                 if (attr_count == 0)
                     return pool_entry{tag_name, value::make_null()};
 
+                if (!doc_.can_alloc(attr_count))
+                    return make_error(data::error_code::pool_overflow);
                 auto start = doc_.pool_size_;
                 for (std::size_t i = 0; i < attr_count; ++i)
                     doc_.pool_[doc_.pool_size_++] = attrs[i];
@@ -331,6 +344,8 @@ namespace data::xml::detail
             if (child_count > attr_count)
             {
                 // Has child elements (possibly with attributes) → mapping
+                if (!doc_.can_alloc(child_count))
+                    return make_error(data::error_code::pool_overflow);
                 auto start = doc_.pool_size_;
                 for (std::size_t i = 0; i < child_count; ++i)
                     doc_.pool_[doc_.pool_size_++] = children[i];
@@ -349,6 +364,8 @@ namespace data::xml::detail
                         return make_error(data::error_code::invalid_syntax);
                     children[child_count++] = pool_entry{string_type{"_text"}, detect_scalar(trimmed)};
                 }
+                if (!doc_.can_alloc(child_count))
+                    return make_error(data::error_code::pool_overflow);
                 auto start = doc_.pool_size_;
                 for (std::size_t i = 0; i < child_count; ++i)
                     doc_.pool_[doc_.pool_size_++] = children[i];
@@ -364,6 +381,7 @@ namespace data::xml::detail
         std::size_t pos_{0};
         std::size_t line_{1};
         std::size_t col_{1};
+        std::size_t depth_{0};
     };
 
 } // namespace data::xml::detail

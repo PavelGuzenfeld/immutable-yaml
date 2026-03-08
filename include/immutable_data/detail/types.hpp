@@ -36,6 +36,9 @@ namespace data
         cyclic_reference,
         unsupported_feature,
         trailing_comma,
+        pool_overflow,
+        string_overflow,
+        max_depth_exceeded,
     };
 
     constexpr auto error_message(error_code ec) noexcept -> std::string_view
@@ -54,6 +57,9 @@ namespace data
         case error_code::cyclic_reference:        return "cyclic reference";
         case error_code::unsupported_feature:     return "unsupported feature";
         case error_code::trailing_comma:          return "trailing comma";
+        case error_code::pool_overflow:           return "node pool overflow";
+        case error_code::string_overflow:         return "string capacity exceeded";
+        case error_code::max_depth_exceeded:      return "maximum nesting depth exceeded";
         }
         return "unknown error";
     }
@@ -374,6 +380,9 @@ namespace data::detail
         [[nodiscard]] constexpr auto size() const noexcept -> std::size_t { return end_ - begin_; }
     };
 
+    // Maximum nesting depth for recursive parsers
+    static constexpr std::size_t MAX_PARSE_DEPTH = 64;
+
     // document — holds the root value and a flat pool of all container children
     struct document
     {
@@ -388,6 +397,11 @@ namespace data::detail
             auto start = pool_size_;
             pool_size_ += count;
             return start;
+        }
+
+        [[nodiscard]] constexpr bool can_alloc(std::size_t count) const noexcept
+        {
+            return pool_size_ + count <= DATA_CT_MAX_NODES;
         }
 
         [[nodiscard]] constexpr auto find(value const &v, std::string_view key) const noexcept

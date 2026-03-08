@@ -33,10 +33,19 @@ namespace data::detail
             return size_;
         }
 
-        constexpr void push_back(char c) noexcept
+        constexpr auto push_back(char c) noexcept -> bool
         {
             if (size_ < MaxSize - 1)
+            {
                 data_[size_++] = c;
+                return true;
+            }
+            return false;
+        }
+
+        [[nodiscard]] constexpr auto full() const noexcept -> bool
+        {
+            return size_ >= MaxSize - 1;
         }
 
         [[nodiscard]] constexpr auto operator<=>(const string_storage &) const = default;

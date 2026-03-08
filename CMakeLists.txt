@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(immutable-yaml VERSION 0.1.0 LANGUAGES CXX)
+project(immutable-yaml VERSION 0.0.1 LANGUAGES CXX)
 
 # Require C++23
 set(CMAKE_CXX_STANDARD 23)
@@ -54,8 +54,16 @@ configure_package_config_file(
 
 # Install the package configuration files
 install(
-  FILES 
+  FILES
     "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
+  DESTINATION lib/cmake/${PROJECT_NAME}
+)
+
+# Install YamlEmbed CMake module
+install(
+  FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/YamlEmbed.cmake"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/yaml_embed_generate.cmake"
   DESTINATION lib/cmake/${PROJECT_NAME}
 )
 

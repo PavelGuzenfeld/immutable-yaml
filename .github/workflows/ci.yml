@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main, feature/*]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-gcc:
+    runs-on: ubuntu-latest
+    container: gcc:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install CMake
+        run: |
+          apt-get update && apt-get install -y --no-install-recommends cmake make
+          g++ --version | head -1
+          cmake --version | head -1
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_CXX_STANDARD=23 -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+
+      - name: Build
+        run: cmake --build build -j$(nproc)
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and test via Docker
+        run: |
+          docker build -t yaml-test .
+          docker run --rm yaml-test

@@ -1,11 +1,7 @@
 #pragma once
 
-// here comes the actual parsing logic that will make your brain hurt
-// but at least it's correct, unlike whatever you were going to write
-
-#include "lexer.hpp"
-#include "types.hpp"
-#include <cctype>
+#include <immutable_yaml/detail/lexer.hpp>
+#include <immutable_yaml/detail/types.hpp>
 #include <variant>
 
 namespace yaml::ct::detail
@@ -15,18 +11,14 @@ namespace yaml::ct::detail
     class parser
     {
     public:
-        constexpr explicit parser(const token_array<MaxTokens> &tokens) noexcept
-            : tokens_{tokens} {}
+        constexpr explicit parser(const token_array<MaxTokens> &tokens, document &doc) noexcept
+            : tokens_{tokens}, doc_{doc} {}
 
         constexpr auto parse_document() noexcept -> std::variant<document, yaml::ct::error_code>
         {
-            // handle optional document start
             if (current_token().type_ == token_type::document_start)
-            {
                 advance();
-            }
 
-            // Check for invalid start tokens
             if (current_token().type_ == token_type::mapping_key ||
                 current_token().type_ == token_type::sequence_end ||
                 current_token().type_ == token_type::mapping_end)
@@ -36,11 +28,10 @@ namespace yaml::ct::detail
 
             auto value_result = parse_value();
             if (std::holds_alternative<yaml::ct::error_code>(value_result))
-            {
                 return std::get<yaml::ct::error_code>(value_result);
-            }
 
-            return document{std::get<yaml_value>(value_result)};
+            doc_.root_ = std::get<yaml_value>(value_result);
+            return doc_;
         }
 
     private:
@@ -52,9 +43,7 @@ namespace yaml::ct::detail
         constexpr auto advance() noexcept -> void
         {
             if (position_ < MaxTokens - 1)
-            {
                 ++position_;
-            }
         }
 
         constexpr auto parse_value() noexcept -> std::variant<yaml_value, yaml::ct::error_code>
@@ -65,11 +54,11 @@ namespace yaml::ct::detail
             {
             case token_type::null_literal:
                 advance();
-                return null_t{};
+                return yaml_value::make_null();
 
             case token_type::boolean_literal:
                 advance();
-                return tok.value_ == "true";
+                return yaml_value::make_bool(tok.value_ == "true");
 
             case token_type::integer_literal:
                 return parse_integer();
@@ -79,7 +68,13 @@ namespace yaml::ct::detail
 
             case token_type::string_literal:
             case token_type::quoted_string:
-                return parse_string();
+                // peek ahead: if next token is colon, this is a block mapping key
+                if (position_ + 1 < MaxTokens &&
+                    tokens_[position_ + 1].type_ == token_type::mapping_key)
+                {
+                    return parse_block_mapping();
+                }
+                return parse_string_value();
 
             case token_type::sequence_start:
                 return parse_flow_sequence();
@@ -91,17 +86,9 @@ namespace yaml::ct::detail
                 return parse_block_sequence();
 
             case token_type::mapping_key:
-                // Missing key before colon
                 return yaml::ct::error_code::unexpected_token;
 
             default:
-                // try to parse as block mapping
-                if (tok.type_ == token_type::string_literal ||
-                    tok.type_ == token_type::quoted_string)
-                {
-                    return parse_block_mapping();
-                }
-                // No valid value found
                 return yaml::ct::error_code::unexpected_token;
             }
         }
@@ -111,7 +98,6 @@ namespace yaml::ct::detail
             const auto &tok = current_token();
             advance();
 
-            // simple integer parsing - in real life you'd want proper overflow checking
             integer result = 0;
             bool negative = false;
             std::size_t i = 0;
@@ -129,12 +115,10 @@ namespace yaml::ct::detail
             for (; i < tok.value_.size(); ++i)
             {
                 if (is_digit(tok.value_[i]))
-                {
                     result = result * 10 + (tok.value_[i] - '0');
-                }
             }
 
-            return negative ? -result : result;
+            return yaml_value::make_int(negative ? -result : result);
         }
 
         constexpr auto parse_float() noexcept -> std::variant<yaml_value, yaml::ct::error_code>
@@ -142,7 +126,6 @@ namespace yaml::ct::detail
             const auto &tok = current_token();
             advance();
 
-            // simplified float parsing - real implementation would be more robust
             floating result = 0.0;
             floating decimal_place = 0.1;
             bool negative = false;
@@ -180,40 +163,45 @@ namespace yaml::ct::detail
                 }
                 else if (c == 'e' || c == 'E')
                 {
-                    // skip scientific notation for now
                     break;
                 }
             }
 
-            return negative ? -result : result;
+            return yaml_value::make_float(negative ? -result : result);
         }
 
-        constexpr auto parse_string() noexcept -> std::variant<yaml_value, yaml::ct::error_code>
+        // parse a string token and return its string_type (for use as key or value)
+        constexpr auto parse_string_raw() noexcept -> std::variant<string_type, yaml::ct::error_code>
         {
             const auto &tok = current_token();
             advance();
 
             if (tok.type_ == token_type::quoted_string)
             {
-                // remove quotes
                 std::string_view content = tok.value_;
                 if (content.size() >= 2)
-                {
                     content = content.substr(1, content.size() - 2);
-                }
-                return string_storage<256>{content};
+                return string_type{content};
             }
-            else
-            {
-                return string_storage<256>{tok.value_};
-            }
+            return string_type{tok.value_};
+        }
+
+        // parse a string token and return as yaml_value
+        constexpr auto parse_string_value() noexcept -> std::variant<yaml_value, yaml::ct::error_code>
+        {
+            auto result = parse_string_raw();
+            if (std::holds_alternative<yaml::ct::error_code>(result))
+                return std::get<yaml::ct::error_code>(result);
+            return yaml_value::make_string(std::get<string_type>(result));
         }
 
         constexpr auto parse_flow_sequence() noexcept -> std::variant<yaml_value, yaml::ct::error_code>
         {
             advance(); // skip [
 
-            sequence_impl seq{};
+            // temp buffer for this level's entries
+            std::array<yaml_value, YAML_CT_MAX_ITEMS> temp{};
+            std::size_t count = 0;
             bool expect_value = true;
 
             while (current_token().type_ != token_type::sequence_end &&
@@ -223,55 +211,50 @@ namespace yaml::ct::detail
                     current_token().value_ == ",")
                 {
                     if (expect_value)
-                    {
-                        // Missing value before comma
                         return yaml::ct::error_code::unexpected_token;
-                    }
-                    advance(); // skip comma
+                    advance();
                     expect_value = true;
                     continue;
                 }
 
                 if (!expect_value)
-                {
-                    // Expected comma but got value
                     return yaml::ct::error_code::unexpected_token;
-                }
 
                 auto value_result = parse_value();
                 if (std::holds_alternative<yaml::ct::error_code>(value_result))
-                {
                     return std::get<yaml::ct::error_code>(value_result);
-                }
 
-                if (!seq.push_back(std::get<yaml_value>(value_result)))
-                {
-                    return yaml::ct::error_code::invalid_syntax; // sequence full
-                }
+                if (count >= YAML_CT_MAX_ITEMS)
+                    return yaml::ct::error_code::invalid_syntax;
 
+                temp[count++] = std::get<yaml_value>(value_result);
                 expect_value = false;
             }
 
-            if (expect_value && seq.size() > 0)
-            {
-                // Trailing comma
+            if (expect_value && count > 0)
                 return yaml::ct::error_code::unexpected_token;
-            }
 
             if (current_token().type_ == token_type::sequence_end)
+                advance();
+
+            // flush to pool
+            auto start = doc_.pool_size_;
+            for (std::size_t i = 0; i < count; ++i)
             {
-                advance(); // skip ]
+                doc_.pool_[doc_.pool_size_].key = string_type{};
+                doc_.pool_[doc_.pool_size_].value = temp[i];
+                doc_.pool_size_++;
             }
 
-            // Wrap in yaml_container when returning
-            return yaml_container{std::move(seq)};
+            return yaml_value::make_sequence(start, count);
         }
 
         constexpr auto parse_flow_mapping() noexcept -> std::variant<yaml_value, yaml::ct::error_code>
         {
             advance(); // skip {
 
-            mapping_impl map{};
+            std::array<pool_entry, YAML_CT_MAX_ITEMS> temp{};
+            std::size_t count = 0;
             bool expect_key = true;
 
             while (current_token().type_ != token_type::mapping_end &&
@@ -281,70 +264,66 @@ namespace yaml::ct::detail
                     current_token().value_ == ",")
                 {
                     if (expect_key)
-                    {
-                        // Missing key-value pair before comma
                         return yaml::ct::error_code::unexpected_token;
-                    }
-                    advance(); // skip comma
+                    advance();
                     expect_key = true;
                     continue;
                 }
 
                 if (!expect_key)
-                {
-                    // Expected comma but got key
                     return yaml::ct::error_code::unexpected_token;
-                }
 
                 // parse key
-                auto key_result = parse_string();
+                auto key_result = parse_string_raw();
                 if (std::holds_alternative<yaml::ct::error_code>(key_result))
-                {
                     return std::get<yaml::ct::error_code>(key_result);
-                }
 
-                auto key = std::get<string_storage<256>>(std::get<yaml_value>(key_result));
+                auto key = std::get<string_type>(key_result);
+
+                // check for duplicate keys
+                for (std::size_t j = 0; j < count; ++j)
+                {
+                    if (temp[j].key.view() == key.view())
+                        return yaml::ct::error_code::duplicate_key;
+                }
 
                 // expect colon
                 if (current_token().type_ != token_type::mapping_key)
-                {
                     return yaml::ct::error_code::unexpected_token;
-                }
                 advance();
 
                 // parse value
                 auto value_result = parse_value();
                 if (std::holds_alternative<yaml::ct::error_code>(value_result))
-                {
                     return std::get<yaml::ct::error_code>(value_result);
-                }
 
-                if (!map.insert(std::move(key), std::get<yaml_value>(value_result)))
-                {
-                    return yaml::ct::error_code::duplicate_key;
-                }
+                if (count >= YAML_CT_MAX_ITEMS)
+                    return yaml::ct::error_code::invalid_syntax;
 
+                temp[count++] = pool_entry{std::move(key), std::get<yaml_value>(value_result)};
                 expect_key = false;
             }
 
-            if (expect_key && map.size() > 0)
-            {
-                // Trailing comma
+            if (expect_key && count > 0)
                 return yaml::ct::error_code::unexpected_token;
-            }
 
             if (current_token().type_ == token_type::mapping_end)
+                advance();
+
+            // flush to pool
+            auto start = doc_.pool_size_;
+            for (std::size_t i = 0; i < count; ++i)
             {
-                advance(); // skip }
+                doc_.pool_[doc_.pool_size_++] = temp[i];
             }
 
-            // Wrap in yaml_container when returning
-            return yaml_container{std::move(map)};
+            return yaml_value::make_mapping(start, count);
         }
 
         constexpr auto parse_block_sequence() noexcept -> std::variant<yaml_value, yaml::ct::error_code>
         {
-            sequence_impl seq{};
+            std::array<yaml_value, YAML_CT_MAX_ITEMS> temp{};
+            std::size_t count = 0;
 
             while (current_token().type_ == token_type::sequence_entry)
             {
@@ -352,62 +331,76 @@ namespace yaml::ct::detail
 
                 auto value_result = parse_value();
                 if (std::holds_alternative<yaml::ct::error_code>(value_result))
-                {
                     return std::get<yaml::ct::error_code>(value_result);
-                }
 
-                if (!seq.push_back(std::get<yaml_value>(value_result)))
-                {
-                    return yaml::ct::error_code::invalid_syntax; // sequence full
-                }
+                if (count >= YAML_CT_MAX_ITEMS)
+                    return yaml::ct::error_code::invalid_syntax;
+
+                temp[count++] = std::get<yaml_value>(value_result);
             }
 
-            // Wrap in yaml_container when returning
-            return yaml_container{std::move(seq)};
+            // flush to pool
+            auto start = doc_.pool_size_;
+            for (std::size_t i = 0; i < count; ++i)
+            {
+                doc_.pool_[doc_.pool_size_].key = string_type{};
+                doc_.pool_[doc_.pool_size_].value = temp[i];
+                doc_.pool_size_++;
+            }
+
+            return yaml_value::make_sequence(start, count);
         }
 
         constexpr auto parse_block_mapping() noexcept -> std::variant<yaml_value, yaml::ct::error_code>
         {
-            mapping_impl map{};
+            std::array<pool_entry, YAML_CT_MAX_ITEMS> temp{};
+            std::size_t count = 0;
 
             while (current_token().type_ == token_type::string_literal ||
                    current_token().type_ == token_type::quoted_string)
             {
-
                 // parse key
-                auto key_result = parse_string();
+                auto key_result = parse_string_raw();
                 if (std::holds_alternative<yaml::ct::error_code>(key_result))
-                {
                     return std::get<yaml::ct::error_code>(key_result);
-                }
 
-                auto key = std::get<string_storage<256>>(std::get<yaml_value>(key_result));
+                auto key = std::get<string_type>(key_result);
+
+                // check for duplicate keys
+                for (std::size_t j = 0; j < count; ++j)
+                {
+                    if (temp[j].key.view() == key.view())
+                        return yaml::ct::error_code::duplicate_key;
+                }
 
                 // expect colon
                 if (current_token().type_ != token_type::mapping_key)
-                {
                     return yaml::ct::error_code::unexpected_token;
-                }
                 advance();
 
                 // parse value
                 auto value_result = parse_value();
                 if (std::holds_alternative<yaml::ct::error_code>(value_result))
-                {
                     return std::get<yaml::ct::error_code>(value_result);
-                }
 
-                if (!map.insert(std::move(key), std::get<yaml_value>(value_result)))
-                {
-                    return yaml::ct::error_code::duplicate_key;
-                }
+                if (count >= YAML_CT_MAX_ITEMS)
+                    return yaml::ct::error_code::invalid_syntax;
+
+                temp[count++] = pool_entry{std::move(key), std::get<yaml_value>(value_result)};
             }
 
-            // Wrap in yaml_container when returning
-            return yaml_container{std::move(map)};
+            // flush to pool
+            auto start = doc_.pool_size_;
+            for (std::size_t i = 0; i < count; ++i)
+            {
+                doc_.pool_[doc_.pool_size_++] = temp[i];
+            }
+
+            return yaml_value::make_mapping(start, count);
         }
 
         const token_array<MaxTokens> &tokens_;
+        document &doc_;
         std::size_t position_{0};
     };
 

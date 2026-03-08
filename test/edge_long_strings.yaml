@@ -1,0 +1,4 @@
+short: "hi"
+medium: "the quick brown fox jumps over the lazy dog"
+long_value: "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz0123456789"
+path: "/usr/local/share/some/deeply/nested/directory/structure/config.yaml"

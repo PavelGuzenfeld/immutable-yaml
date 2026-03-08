@@ -4,23 +4,23 @@
 #include <memory> // for std::construct_at, std::destroy_at
 #include <string_view>
 #include <utility>
-#include <immutable_yaml/detail/string_storage.hpp>
-#include <immutable_yaml/detail/utils.hpp>
+#include <immutable_data/detail/string_storage.hpp>
+#include <immutable_data/detail/utils.hpp>
 
 // Configurable capacity limits
-#ifndef YAML_CT_MAX_STRING_SIZE
-#define YAML_CT_MAX_STRING_SIZE 256
+#ifndef DATA_CT_MAX_STRING_SIZE
+#define DATA_CT_MAX_STRING_SIZE 256
 #endif
 
-#ifndef YAML_CT_MAX_ITEMS
-#define YAML_CT_MAX_ITEMS 64
+#ifndef DATA_CT_MAX_ITEMS
+#define DATA_CT_MAX_ITEMS 64
 #endif
 
-#ifndef YAML_CT_MAX_NODES
-#define YAML_CT_MAX_NODES (YAML_CT_MAX_ITEMS * 4)
+#ifndef DATA_CT_MAX_NODES
+#define DATA_CT_MAX_NODES (DATA_CT_MAX_ITEMS * 4)
 #endif
 
-namespace yaml::ct
+namespace data
 {
     enum class [[nodiscard]] error_code : std::uint8_t
     {
@@ -34,11 +34,12 @@ namespace yaml::ct
         invalid_document_start,
         invalid_document_end,
         cyclic_reference,
-        unsupported_feature
+        unsupported_feature,
+        trailing_comma,
     };
 }
 
-namespace yaml::ct::detail
+namespace data::detail
 {
 
     enum class [[nodiscard]] token_type : std::uint8_t
@@ -56,6 +57,7 @@ namespace yaml::ct::detail
         sequence_end,
         mapping_start,
         mapping_end,
+        comma,
         string_literal,
         integer_literal,
         float_literal,
@@ -95,18 +97,17 @@ namespace yaml::ct::detail
     using boolean = bool;
     using integer = std::int64_t;
     using floating = double;
-    using string_type = string_storage<YAML_CT_MAX_STRING_SIZE>;
+    using string_type = string_storage<DATA_CT_MAX_STRING_SIZE>;
 
     // container reference — index range into document's node pool
-    // no default member initializers: keeps trivial default ctor for constexpr union activation
     struct container_ref
     {
         std::size_t start;
         std::size_t count;
     };
 
-    // yaml_value — flat tagged union, no recursive types
-    struct yaml_value
+    // value — flat tagged union for any hierarchical data (YAML, JSON, etc.)
+    struct value
     {
         enum class kind : std::uint8_t
         {
@@ -133,9 +134,9 @@ namespace yaml::ct::detail
             container_ref children_;
         } data_{};
 
-        constexpr yaml_value() noexcept = default;
+        constexpr value() noexcept = default;
 
-        constexpr yaml_value(yaml_value const &o) noexcept : kind_{o.kind_}
+        constexpr value(value const &o) noexcept : kind_{o.kind_}
         {
             switch (kind_)
             {
@@ -160,7 +161,7 @@ namespace yaml::ct::detail
             }
         }
 
-        constexpr yaml_value(yaml_value &&o) noexcept : kind_{o.kind_}
+        constexpr value(value &&o) noexcept : kind_{o.kind_}
         {
             switch (kind_)
             {
@@ -185,13 +186,13 @@ namespace yaml::ct::detail
             }
         }
 
-        constexpr ~yaml_value() noexcept
+        constexpr ~value() noexcept
         {
             if (kind_ == kind::string)
                 std::destroy_at(&data_.str_);
         }
 
-        constexpr auto operator=(yaml_value const &o) noexcept -> yaml_value &
+        constexpr auto operator=(value const &o) noexcept -> value &
         {
             if (this != &o)
             {
@@ -201,7 +202,7 @@ namespace yaml::ct::detail
             return *this;
         }
 
-        constexpr auto operator=(yaml_value &&o) noexcept -> yaml_value &
+        constexpr auto operator=(value &&o) noexcept -> value &
         {
             if (this != &o)
             {
@@ -212,51 +213,51 @@ namespace yaml::ct::detail
         }
 
         // factory methods
-        static constexpr auto make_null() noexcept -> yaml_value { return {}; }
+        static constexpr auto make_null() noexcept -> value { return {}; }
 
-        static constexpr auto make_bool(bool b) noexcept -> yaml_value
+        static constexpr auto make_bool(bool b) noexcept -> value
         {
-            yaml_value v;
+            value v;
             v.kind_ = kind::boolean;
             v.data_.bool_ = b;
             return v;
         }
 
-        static constexpr auto make_int(std::int64_t i) noexcept -> yaml_value
+        static constexpr auto make_int(std::int64_t i) noexcept -> value
         {
-            yaml_value v;
+            value v;
             v.kind_ = kind::integer;
             v.data_.int_ = i;
             return v;
         }
 
-        static constexpr auto make_float(double f) noexcept -> yaml_value
+        static constexpr auto make_float(double f) noexcept -> value
         {
-            yaml_value v;
+            value v;
             v.kind_ = kind::floating;
             v.data_.float_ = f;
             return v;
         }
 
-        static constexpr auto make_string(string_type s) noexcept -> yaml_value
+        static constexpr auto make_string(string_type s) noexcept -> value
         {
-            yaml_value v;
+            value v;
             v.kind_ = kind::string;
             std::construct_at(&v.data_.str_, std::move(s));
             return v;
         }
 
-        static constexpr auto make_sequence(std::size_t start, std::size_t count) noexcept -> yaml_value
+        static constexpr auto make_sequence(std::size_t start, std::size_t count) noexcept -> value
         {
-            yaml_value v;
+            value v;
             v.kind_ = kind::sequence;
             v.data_.children_ = {start, count};
             return v;
         }
 
-        static constexpr auto make_mapping(std::size_t start, std::size_t count) noexcept -> yaml_value
+        static constexpr auto make_mapping(std::size_t start, std::size_t count) noexcept -> value
         {
-            yaml_value v;
+            value v;
             v.kind_ = kind::mapping;
             v.data_.children_ = {start, count};
             return v;
@@ -282,13 +283,10 @@ namespace yaml::ct::detail
     struct pool_entry
     {
         string_type key{};
-        yaml_value value{};
+        value val_{};
     };
 
-    // forward declare document for views
-    struct document;
-
-    // view for iterating sequence/mapping values: for (auto& val : doc.values(node))
+    // view for iterating sequence/mapping values
     struct value_view
     {
         pool_entry const *begin_;
@@ -298,7 +296,7 @@ namespace yaml::ct::detail
         {
             pool_entry const *ptr_;
 
-            constexpr auto operator*() const noexcept -> yaml_value const & { return ptr_->value; }
+            constexpr auto operator*() const noexcept -> data::detail::value const & { return ptr_->val_; }
             constexpr auto operator++() noexcept -> iterator & { ++ptr_; return *this; }
             constexpr auto operator!=(iterator const &o) const noexcept -> bool { return ptr_ != o.ptr_; }
             constexpr auto operator==(iterator const &o) const noexcept -> bool { return ptr_ == o.ptr_; }
@@ -313,10 +311,10 @@ namespace yaml::ct::detail
     struct entry_view_item
     {
         std::string_view key;
-        yaml_value const &value;
+        data::detail::value const &value;
     };
 
-    // view for iterating mapping key-value pairs: for (auto [key, val] : doc.entries(node))
+    // view for iterating mapping key-value pairs
     struct entry_view
     {
         pool_entry const *begin_;
@@ -328,7 +326,7 @@ namespace yaml::ct::detail
 
             constexpr auto operator*() const noexcept -> entry_view_item
             {
-                return {ptr_->key.view(), ptr_->value};
+                return {ptr_->key.view(), ptr_->val_};
             }
             constexpr auto operator++() noexcept -> iterator & { ++ptr_; return *this; }
             constexpr auto operator!=(iterator const &o) const noexcept -> bool { return ptr_ != o.ptr_; }
@@ -343,13 +341,12 @@ namespace yaml::ct::detail
     // document — holds the root value and a flat pool of all container children
     struct document
     {
-        yaml_value root_{};
-        std::array<pool_entry, YAML_CT_MAX_NODES> pool_{};
+        value root_{};
+        std::array<pool_entry, DATA_CT_MAX_NODES> pool_{};
         std::size_t pool_size_{0};
 
         constexpr document() noexcept = default;
 
-        // allocate contiguous entries in the pool, return start index
         constexpr auto alloc(std::size_t count) noexcept -> std::size_t
         {
             auto start = pool_size_;
@@ -357,60 +354,54 @@ namespace yaml::ct::detail
             return start;
         }
 
-        // find a key in a mapping value — returns pointer into pool (nullptr if not found)
-        [[nodiscard]] constexpr auto find(yaml_value const &v, std::string_view key) const noexcept
-            -> yaml_value const *
+        [[nodiscard]] constexpr auto find(value const &v, std::string_view key) const noexcept
+            -> value const *
         {
-            if (v.kind_ != yaml_value::kind::mapping)
+            if (v.kind_ != value::kind::mapping)
                 return nullptr;
             for (std::size_t i = 0; i < v.data_.children_.count; ++i)
             {
                 auto &entry = pool_[v.data_.children_.start + i];
                 if (entry.key.view() == key)
-                    return &entry.value;
+                    return &entry.val_;
             }
             return nullptr;
         }
 
-        // get sequence element by index
-        [[nodiscard]] constexpr auto at(yaml_value const &v, std::size_t idx) const noexcept
-            -> yaml_value const &
+        [[nodiscard]] constexpr auto at(value const &v, std::size_t idx) const noexcept
+            -> value const &
         {
-            return pool_[v.data_.children_.start + idx].value;
+            return pool_[v.data_.children_.start + idx].val_;
         }
 
-        // get container size (sequence or mapping)
-        [[nodiscard]] constexpr auto size(yaml_value const &v) const noexcept -> std::size_t
+        [[nodiscard]] constexpr auto size(value const &v) const noexcept -> std::size_t
         {
-            if (v.kind_ == yaml_value::kind::sequence || v.kind_ == yaml_value::kind::mapping)
+            if (v.kind_ == value::kind::sequence || v.kind_ == value::kind::mapping)
                 return v.data_.children_.count;
             return 0;
         }
 
-        // get mapping key at index
-        [[nodiscard]] constexpr auto key_at(yaml_value const &v, std::size_t idx) const noexcept
+        [[nodiscard]] constexpr auto key_at(value const &v, std::size_t idx) const noexcept
             -> std::string_view
         {
             return pool_[v.data_.children_.start + idx].key.view();
         }
 
-        // iterate values in a sequence or mapping
-        [[nodiscard]] constexpr auto values(yaml_value const &v) const noexcept -> value_view
+        [[nodiscard]] constexpr auto values(value const &v) const noexcept -> value_view
         {
-            if (v.kind_ != yaml_value::kind::sequence && v.kind_ != yaml_value::kind::mapping)
+            if (v.kind_ != value::kind::sequence && v.kind_ != value::kind::mapping)
                 return {pool_.data(), pool_.data()};
             auto *base = pool_.data() + v.data_.children_.start;
             return {base, base + v.data_.children_.count};
         }
 
-        // iterate key-value entries in a mapping
-        [[nodiscard]] constexpr auto entries(yaml_value const &v) const noexcept -> entry_view
+        [[nodiscard]] constexpr auto entries(value const &v) const noexcept -> entry_view
         {
-            if (v.kind_ != yaml_value::kind::mapping)
+            if (v.kind_ != value::kind::mapping)
                 return {pool_.data(), pool_.data()};
             auto *base = pool_.data() + v.data_.children_.start;
             return {base, base + v.data_.children_.count};
         }
     };
 
-} // namespace yaml::ct::detail
+} // namespace data::detail

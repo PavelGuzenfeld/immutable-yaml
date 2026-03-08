@@ -1,9 +1,9 @@
 #pragma once
-#include <array> // for token storage
-#include <cstddef> // for std::size_t
-#include <string_view> // for std::string_view
+#include <array>
+#include <cstddef>
+#include <string_view>
 
-namespace yaml::ct::detail
+namespace data::detail
 {
 
     template <std::size_t MaxSize>
@@ -40,4 +40,4 @@ namespace yaml::ct::detail
         std::size_t size_{0};
     };
 
-} // namespace yaml::ct::detail
+} // namespace data::detail

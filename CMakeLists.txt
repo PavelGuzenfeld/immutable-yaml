@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(immutable-yaml VERSION 0.0.1 LANGUAGES CXX)
+project(immutable-data-embedder VERSION 0.1.0 LANGUAGES CXX)
 
 # Require C++23
 set(CMAKE_CXX_STANDARD 23)
@@ -12,7 +12,7 @@ if (NOT CMAKE_BUILD_TYPE)
 endif()
 message(STATUS "Library will be built using CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
 
-# Runner library
+# Header-only library
 add_library(${PROJECT_NAME} INTERFACE)
 
 target_include_directories(${PROJECT_NAME}
@@ -59,11 +59,11 @@ install(
   DESTINATION lib/cmake/${PROJECT_NAME}
 )
 
-# Install YamlEmbed CMake module
+# Install DataEmbed CMake module
 install(
   FILES
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/YamlEmbed.cmake"
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/yaml_embed_generate.cmake"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/DataEmbed.cmake"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/data_embed_generate.cmake"
   DESTINATION lib/cmake/${PROJECT_NAME}
 )
 

@@ -1,15 +1,16 @@
 #pragma once
 
-// Compile-time YAML lexer — tokenizes input into a fixed-size token array
+// Compile-time YAML lexer — tokenizes YAML input into a fixed-size token array
 
-#include <immutable_yaml/detail/types.hpp>
+#include <immutable_data/detail/types.hpp>
 #include <array>
-#include <cctype>
 #include <string_view>
 #include <variant>
 
-namespace yaml::ct::detail
+namespace data::yaml::detail
 {
+
+    using namespace data::detail;
 
     template <std::size_t MaxTokens = 1024>
     class lexer
@@ -24,8 +25,7 @@ namespace yaml::ct::detail
 
         constexpr lexer() noexcept = default;
 
-        // Changed: tokenize now takes the string directly instead of storing it
-        constexpr auto tokenize(std::string_view input) noexcept -> std::variant<token_array<MaxTokens>, yaml::ct::error_code>
+        constexpr auto tokenize(std::string_view input) noexcept -> std::variant<token_array<MaxTokens>, data::error_code>
         {
             token_array<MaxTokens> tokens{};
             std::size_t token_count = 0;
@@ -39,19 +39,14 @@ namespace yaml::ct::detail
                     break;
 
                 auto token_result = next_token(input, s);
-                if (std::holds_alternative<yaml::ct::error_code>(token_result))
-                {
-                    return std::get<yaml::ct::error_code>(token_result);
-                }
+                if (std::holds_alternative<data::error_code>(token_result))
+                    return std::get<data::error_code>(token_result);
 
                 tokens[token_count++] = std::get<token>(token_result);
             }
 
-            // add eof token
             if (token_count < MaxTokens)
-            {
                 tokens[token_count] = token{token_type::eof, {}, s.line, s.column};
-            }
 
             return tokens;
         }
@@ -76,7 +71,6 @@ namespace yaml::ct::detail
         {
             if (at_end(input, s))
                 return '\0';
-
             char c = input[s.position++];
             if (c == '\n')
             {
@@ -95,18 +89,14 @@ namespace yaml::ct::detail
             while (!at_end(input, s))
             {
                 char c = peek(input, s);
-
                 if (c == ' ' || c == '\t' || c == '\n')
                 {
                     advance(input, s);
                 }
                 else if (c == '#')
                 {
-                    // skip comment to end of line
                     while (!at_end(input, s) && peek(input, s) != '\n')
-                    {
                         advance(input, s);
-                    }
                 }
                 else
                 {
@@ -115,7 +105,7 @@ namespace yaml::ct::detail
             }
         }
 
-        static constexpr auto next_token(std::string_view input, state &s) noexcept -> std::variant<token, yaml::ct::error_code>
+        static constexpr auto next_token(std::string_view input, state &s) noexcept -> std::variant<token, data::error_code>
         {
             char c = peek(input, s);
             std::size_t start_line = s.line;
@@ -130,7 +120,6 @@ namespace yaml::ct::detail
             case '-':
                 if (peek_next(input, s) == '-' && s.position + 2 < input.size() && input[s.position + 2] == '-')
                 {
-                    // document start
                     advance(input, s);
                     advance(input, s);
                     advance(input, s);
@@ -138,13 +127,11 @@ namespace yaml::ct::detail
                 }
                 else if (peek_next(input, s) == ' ' || peek_next(input, s) == '\t' || peek_next(input, s) == '\n')
                 {
-                    // sequence entry
                     advance(input, s);
                     return token{token_type::sequence_entry, "-", start_line, start_column};
                 }
                 else if (is_digit(peek_next(input, s)))
                 {
-                    // negative number
                     return parse_number(input, s);
                 }
                 break;
@@ -152,7 +139,6 @@ namespace yaml::ct::detail
             case '.':
                 if (peek_next(input, s) == '.' && s.position + 2 < input.size() && input[s.position + 2] == '.')
                 {
-                    // document end
                     advance(input, s);
                     advance(input, s);
                     advance(input, s);
@@ -182,7 +168,7 @@ namespace yaml::ct::detail
 
             case ',':
                 advance(input, s);
-                return token{token_type::string_literal, ",", start_line, start_column};
+                return token{token_type::comma, ",", start_line, start_column};
 
             case '"':
                 return parse_quoted_string(input, s, '"');
@@ -209,34 +195,29 @@ namespace yaml::ct::detail
 
             default:
                 if (is_digit(c) || c == '-' || c == '+')
-                {
                     return parse_number(input, s);
-                }
                 else if (is_alpha(c) || c == '_')
-                {
                     return parse_identifier(input, s);
-                }
                 break;
             }
 
-            return yaml::ct::error_code::unexpected_token;
+            return data::error_code::unexpected_token;
         }
 
-        static constexpr auto parse_quoted_string(std::string_view input, state &s, char quote) noexcept -> std::variant<token, yaml::ct::error_code>
+        static constexpr auto parse_quoted_string(std::string_view input, state &s, char quote) noexcept -> std::variant<token, data::error_code>
         {
             std::size_t start_line = s.line;
             std::size_t start_column = s.column;
             std::size_t start_pos = s.position;
 
-            advance(input, s); // skip opening quote
-
+            advance(input, s);
             while (!at_end(input, s) && peek(input, s) != quote)
             {
                 if (peek(input, s) == '\\')
                 {
-                    advance(input, s); // skip backslash
+                    advance(input, s);
                     if (!at_end(input, s))
-                        advance(input, s); // skip escaped character
+                        advance(input, s);
                 }
                 else
                 {
@@ -245,60 +226,41 @@ namespace yaml::ct::detail
             }
 
             if (at_end(input, s))
-            {
-                return yaml::ct::error_code::unterminated_string;
-            }
+                return data::error_code::unterminated_string;
 
-            advance(input, s); // skip closing quote
-
+            advance(input, s);
             std::string_view value = input.substr(start_pos, s.position - start_pos);
             return token{token_type::quoted_string, value, start_line, start_column};
         }
 
-        static constexpr auto parse_number(std::string_view input, state &s) noexcept -> std::variant<token, yaml::ct::error_code>
+        static constexpr auto parse_number(std::string_view input, state &s) noexcept -> std::variant<token, data::error_code>
         {
             std::size_t start_line = s.line;
             std::size_t start_column = s.column;
             std::size_t start_pos = s.position;
 
-            // handle sign
             if (peek(input, s) == '-' || peek(input, s) == '+')
-            {
                 advance(input, s);
-            }
 
-            // parse digits
             while (!at_end(input, s) && is_digit(peek(input, s)))
-            {
                 advance(input, s);
-            }
 
             bool is_float = false;
-
-            // handle decimal point
             if (!at_end(input, s) && peek(input, s) == '.')
             {
                 is_float = true;
                 advance(input, s);
                 while (!at_end(input, s) && is_digit(peek(input, s)))
-                {
                     advance(input, s);
-                }
             }
-
-            // handle scientific notation
             if (!at_end(input, s) && (peek(input, s) == 'e' || peek(input, s) == 'E'))
             {
                 is_float = true;
                 advance(input, s);
                 if (!at_end(input, s) && (peek(input, s) == '+' || peek(input, s) == '-'))
-                {
                     advance(input, s);
-                }
                 while (!at_end(input, s) && is_digit(peek(input, s)))
-                {
                     advance(input, s);
-                }
             }
 
             std::string_view value = input.substr(start_pos, s.position - start_pos);
@@ -306,86 +268,62 @@ namespace yaml::ct::detail
             return token{type, value, start_line, start_column};
         }
 
-        static constexpr auto parse_identifier(std::string_view input, state &s) noexcept -> std::variant<token, yaml::ct::error_code>
+        static constexpr auto parse_identifier(std::string_view input, state &s) noexcept -> std::variant<token, data::error_code>
         {
             std::size_t start_line = s.line;
             std::size_t start_column = s.column;
             std::size_t start_pos = s.position;
 
             while (!at_end(input, s) && (is_alnum(peek(input, s)) || peek(input, s) == '_' || peek(input, s) == '-'))
-            {
                 advance(input, s);
-            }
 
             std::string_view value = input.substr(start_pos, s.position - start_pos);
 
-            // check for special keywords
             if (value == "true" || value == "false")
-            {
                 return token{token_type::boolean_literal, value, start_line, start_column};
-            }
             else if (value == "null" || value == "~")
-            {
                 return token{token_type::null_literal, value, start_line, start_column};
-            }
 
             return token{token_type::string_literal, value, start_line, start_column};
         }
 
-        static constexpr auto parse_anchor(std::string_view input, state &s) noexcept -> std::variant<token, yaml::ct::error_code>
+        static constexpr auto parse_anchor(std::string_view input, state &s) noexcept -> std::variant<token, data::error_code>
         {
             std::size_t start_line = s.line;
             std::size_t start_column = s.column;
             std::size_t start_pos = s.position;
-
-            advance(input, s); // skip &
-
+            advance(input, s);
             while (!at_end(input, s) && (is_alnum(peek(input, s)) || peek(input, s) == '_' || peek(input, s) == '-'))
-            {
                 advance(input, s);
-            }
-
             std::string_view value = input.substr(start_pos, s.position - start_pos);
             return token{token_type::anchor, value, start_line, start_column};
         }
 
-        static constexpr auto parse_alias(std::string_view input, state &s) noexcept -> std::variant<token, yaml::ct::error_code>
+        static constexpr auto parse_alias(std::string_view input, state &s) noexcept -> std::variant<token, data::error_code>
         {
             std::size_t start_line = s.line;
             std::size_t start_column = s.column;
             std::size_t start_pos = s.position;
-
-            advance(input, s); // skip *
-
+            advance(input, s);
             while (!at_end(input, s) && (is_alnum(peek(input, s)) || peek(input, s) == '_' || peek(input, s) == '-'))
-            {
                 advance(input, s);
-            }
-
             std::string_view value = input.substr(start_pos, s.position - start_pos);
             return token{token_type::alias, value, start_line, start_column};
         }
 
-        static constexpr auto parse_tag(std::string_view input, state &s) noexcept -> std::variant<token, yaml::ct::error_code>
+        static constexpr auto parse_tag(std::string_view input, state &s) noexcept -> std::variant<token, data::error_code>
         {
             std::size_t start_line = s.line;
             std::size_t start_column = s.column;
             std::size_t start_pos = s.position;
-
-            advance(input, s); // skip first !
+            advance(input, s);
             if (!at_end(input, s) && peek(input, s) == '!')
-            {
-                advance(input, s); // skip second !
-            }
-
-            while (!at_end(input, s) && peek(input, s) != ' ' && peek(input, s) != '\t' && peek(input, s) != '\n')
-            {
                 advance(input, s);
-            }
-
+            while (!at_end(input, s) && peek(input, s) != ' ' && peek(input, s) != '\t' && peek(input, s) != '\n')
+                advance(input, s);
             std::string_view value = input.substr(start_pos, s.position - start_pos);
             return token{token_type::tag, value, start_line, start_column};
         }
     };
 
-} // namespace yaml::ct::detail
+} // namespace data::yaml::detail

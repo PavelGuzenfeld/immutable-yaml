@@ -1,9 +1,9 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>immutable-yaml</name>
-  <version>0.0.1</version>
-  <description>Compile-time YAML parser for C++23</description>
+  <name>immutable-data-embedder</name>
+  <version>0.1.0</version>
+  <description>Compile-time YAML and JSON parser for C++23 with zero-overhead embedding</description>
   <maintainer email="pavel@guzenfeld.dev">Pavel Guzenfeld</maintainer>
 
   <license>MIT</license>

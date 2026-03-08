@@ -16,15 +16,12 @@
 namespace yaml::ct
 {
 
-    // import the types we need from detail namespace
     using detail::document;
     using error_code = yaml::ct::error_code;
 
-    // because you probably don't know what a proper result type looks like
     template <typename T>
     using result = std::variant<T, error_code>;
 
-    // helper function to create string_view at compile time
     template <std::size_t N>
     constexpr auto make_yaml_view(const char (&yaml_str)[N]) noexcept -> std::string_view
     {
@@ -34,15 +31,13 @@ namespace yaml::ct
         }
         else
         {
-            return std::string_view{yaml_str, N - 1}; // remove null terminator
+            return std::string_view{yaml_str, N - 1};
         }
     }
 
-    // the main event - your compile-time yaml parser that doesn't suck
     template <std::size_t N>
     constexpr auto parse(const char (&yaml_str)[N]) noexcept -> result<document>
     {
-        // wow, look at that - actual input validation instead of just hoping for the best
         if constexpr (N <= 1)
         {
             return error_code::invalid_syntax;
@@ -59,30 +54,27 @@ namespace yaml::ct
         }
 
         auto const &tokens = std::get<detail::token_array<YAML_CT_MAX_TOKENS>>(tokens_result);
-        auto parser = detail::parser<YAML_CT_MAX_TOKENS>{tokens};
+        detail::document doc{};
+        auto parser = detail::parser<YAML_CT_MAX_TOKENS>{tokens, doc};
 
         return parser.parse_document();
     }
 
-    // convenience function for when you're too lazy to handle errors properly
     template <std::size_t N>
     constexpr auto parse_or_throw(const char (&yaml_str)[N]) -> document
     {
-        auto result = parse(yaml_str); // Changed: removed constexpr here
+        auto result = parse(yaml_str);
 
-        // The static_assert will be triggered by the calling code if this fails
         if (std::holds_alternative<document>(result))
         {
             return std::get<document>(result);
         }
         else
         {
-            // This creates a compile-time error if parsing fails
-            return std::get<document>(result); // This will fail if result contains an error
+            return std::get<document>(result);
         }
     }
 
-    // validation function because apparently you need compile-time guarantees
     template <std::size_t N>
     constexpr auto is_valid(const char (&yaml_str)[N]) noexcept -> bool
     {
@@ -92,6 +84,5 @@ namespace yaml::ct
 
 } // namespace yaml::ct
 
-// convenience macro because i know you love macros (you shouldn't)
 #define YAML_CT(str) yaml::ct::parse_or_throw(str)
 #define YAML_CT_VALID(str) yaml::ct::is_valid(str)

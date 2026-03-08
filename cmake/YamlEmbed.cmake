@@ -23,7 +23,7 @@ function(_yaml_round_up_pow2 INPUT OUTPUT)
 endfunction()
 
 # Analyze a YAML file and compute capacity requirements
-function(_yaml_analyze_file YAML_FILE OUT_TOKENS OUT_ITEMS OUT_STRING)
+function(_yaml_analyze_file YAML_FILE OUT_TOKENS OUT_ITEMS OUT_STRING OUT_NODES)
     file(READ "${YAML_FILE}" CONTENT)
 
     # Count lines → approximate token count (each line ≈ 3-4 tokens)
@@ -46,13 +46,15 @@ function(_yaml_analyze_file YAML_FILE OUT_TOKENS OUT_ITEMS OUT_STRING)
         math(EXPR DASH_COUNT "${DASH_COUNT} + 1")
     endif()
 
-    # Max items = max entries at any level. Conservative: use total count.
+    # Total nodes = all entries across all levels (for pool sizing)
+    math(EXPR TOTAL_NODES "${COLON_COUNT} + ${DASH_COUNT} + 4")
+
+    # Max items per level = conservative estimate
     if(COLON_COUNT GREATER DASH_COUNT)
         set(ITEMS_EST ${COLON_COUNT})
     else()
         set(ITEMS_EST ${DASH_COUNT})
     endif()
-    # Add margin for nested structures
     math(EXPR ITEMS_EST "${ITEMS_EST} + 4")
 
     # Max string size = longest scalar value + margin
@@ -70,10 +72,12 @@ function(_yaml_analyze_file YAML_FILE OUT_TOKENS OUT_ITEMS OUT_STRING)
     _yaml_round_up_pow2(${TOKEN_EST} TOKEN_POW2)
     _yaml_round_up_pow2(${ITEMS_EST} ITEMS_POW2)
     _yaml_round_up_pow2(${STRING_EST} STRING_POW2)
+    _yaml_round_up_pow2(${TOTAL_NODES} NODES_POW2)
 
     set(${OUT_TOKENS} ${TOKEN_POW2} PARENT_SCOPE)
     set(${OUT_ITEMS} ${ITEMS_POW2} PARENT_SCOPE)
     set(${OUT_STRING} ${STRING_POW2} PARENT_SCOPE)
+    set(${OUT_NODES} ${NODES_POW2} PARENT_SCOPE)
 endfunction()
 
 function(yaml_embed TARGET)
@@ -84,6 +88,7 @@ function(yaml_embed TARGET)
     set(MAX_TOKENS 16)
     set(MAX_ITEMS 16)
     set(MAX_STRING 16)
+    set(MAX_NODES 16)
 
     foreach(YAML_FILE ${ARGN})
         get_filename_component(YAML_ABSOLUTE "${YAML_FILE}" ABSOLUTE)
@@ -96,7 +101,7 @@ function(yaml_embed TARGET)
         set(OUTPUT_FILE "${OUTPUT_DIR}/${YAML_NAME}.hpp")
 
         # Analyze this YAML file
-        _yaml_analyze_file("${YAML_ABSOLUTE}" FILE_TOKENS FILE_ITEMS FILE_STRING)
+        _yaml_analyze_file("${YAML_ABSOLUTE}" FILE_TOKENS FILE_ITEMS FILE_STRING FILE_NODES)
 
         # Update maximums
         if(FILE_TOKENS GREATER MAX_TOKENS)
@@ -107,6 +112,9 @@ function(yaml_embed TARGET)
         endif()
         if(FILE_STRING GREATER MAX_STRING)
             set(MAX_STRING ${FILE_STRING})
+        endif()
+        if(FILE_NODES GREATER MAX_NODES)
+            set(MAX_NODES ${FILE_NODES})
         endif()
 
         add_custom_command(
@@ -126,12 +134,13 @@ function(yaml_embed TARGET)
         target_sources(${TARGET} PRIVATE "${OUTPUT_FILE}")
     endforeach()
 
-    message(STATUS "yaml_embed(${TARGET}): TOKENS=${MAX_TOKENS} ITEMS=${MAX_ITEMS} STRING=${MAX_STRING}")
+    message(STATUS "yaml_embed(${TARGET}): TOKENS=${MAX_TOKENS} ITEMS=${MAX_ITEMS} STRING=${MAX_STRING} NODES=${MAX_NODES}")
 
     target_compile_definitions(${TARGET} PRIVATE
         YAML_CT_MAX_TOKENS=${MAX_TOKENS}
         YAML_CT_MAX_ITEMS=${MAX_ITEMS}
         YAML_CT_MAX_STRING_SIZE=${MAX_STRING}
+        YAML_CT_MAX_NODES=${MAX_NODES}
     )
     target_include_directories(${TARGET} PRIVATE "${OUTPUT_DIR}")
 endfunction()

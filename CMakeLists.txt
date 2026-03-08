@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(immutable-yaml VERSION 0.1.0 LANGUAGES CXX)
+project(immutable-yaml VERSION 0.0.1 LANGUAGES CXX)
 
 # Require C++23
 set(CMAKE_CXX_STANDARD 23)

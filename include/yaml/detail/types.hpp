@@ -1,15 +1,14 @@
 #pragma once
 
-#include <memory> // Added for recursive_wrapper
-#include <new>    // Added for placement new
+#include <array>
+#include <memory> // for std::construct_at, std::destroy_at
 #include <optional>
 #include <string_view>
 #include <utility>
-#include <variant>
-#include <yaml/detail/string_storage.hpp> // for string_storage
-#include <yaml/detail/utils.hpp>          // for is_alpha, is_digit, etc.
+#include <yaml/detail/string_storage.hpp>
+#include <yaml/detail/utils.hpp>
 
-// Configurable capacity limits — set via target_compile_definitions or before #include
+// Configurable capacity limits
 #ifndef YAML_CT_MAX_STRING_SIZE
 #define YAML_CT_MAX_STRING_SIZE 256
 #endif
@@ -18,9 +17,12 @@
 #define YAML_CT_MAX_ITEMS 64
 #endif
 
+#ifndef YAML_CT_MAX_NODES
+#define YAML_CT_MAX_NODES (YAML_CT_MAX_ITEMS * 4)
+#endif
+
 namespace yaml::ct
 {
-    // forward declare error_code because apparently you don't understand dependencies
     enum class [[nodiscard]] error_code : std::uint8_t
     {
         none = 0,
@@ -42,43 +44,30 @@ namespace yaml::ct::detail
 
     enum class [[nodiscard]] token_type : std::uint8_t
     {
-        // basic tokens
         eof,
         newline,
         space,
         tab,
-
-        // structural tokens
-        document_start, // ---
-        document_end,   // ...
-        sequence_entry, // -
-        mapping_key,    // :
-        mapping_value,  // value after :
-
-        // bracketed containers
-        sequence_start, // [
-        sequence_end,   // ]
-        mapping_start,  // {
-        mapping_end,    // }
-
-        // scalars
+        document_start,
+        document_end,
+        sequence_entry,
+        mapping_key,
+        mapping_value,
+        sequence_start,
+        sequence_end,
+        mapping_start,
+        mapping_end,
         string_literal,
         integer_literal,
         float_literal,
         boolean_literal,
         null_literal,
-
-        // yaml specific
-        anchor, // &anchor
-        alias,  // *alias
-        tag,    // !!type
-
-        // strings
-        quoted_string,  // "string" or 'string'
-        literal_string, // |
-        folded_string,  // >
-
-        // errors
+        anchor,
+        alias,
+        tag,
+        quoted_string,
+        literal_string,
+        folded_string,
         invalid
     };
 
@@ -98,7 +87,7 @@ namespace yaml::ct::detail
     template <std::size_t MaxTokens = 1024>
     using token_array = std::array<token, MaxTokens>;
 
-    // yaml value types that actually make sense
+    // scalar type aliases
     struct null_t
     {
         constexpr bool operator==(null_t const &) const = default;
@@ -107,236 +96,249 @@ namespace yaml::ct::detail
     using boolean = bool;
     using integer = std::int64_t;
     using floating = double;
-
-    // Forward declare yaml_container for use in yaml_value
-    struct yaml_container;
-
     using string_type = string_storage<YAML_CT_MAX_STRING_SIZE>;
 
-    // The main value type - forward declared yaml_container works fine in variant
-    using yaml_value = std::variant<
-        null_t,
-        boolean,
-        integer,
-        floating,
-        string_type,
-        yaml_container>;
-
-    // NOW define sequence_impl and mapping_impl with complete yaml_value
-    // these fuckers need to come BEFORE yaml_container implementation
-    struct sequence_impl
+    // container reference — index range into document's node pool
+    // no default member initializers: keeps trivial default ctor for constexpr union activation
+    struct container_ref
     {
-        constexpr sequence_impl() noexcept = default;
-
-        constexpr auto push_back(yaml_value val) noexcept -> bool
-        {
-            if (size_ >= YAML_CT_MAX_ITEMS)
-                return false; // overflow protection
-            items_[size_++] = std::move(val);
-            return true;
-        }
-
-        [[nodiscard]] constexpr auto size() const noexcept -> std::size_t
-        {
-            return size_;
-        }
-
-        [[nodiscard]] constexpr auto operator[](std::size_t idx) const noexcept
-            -> yaml_value const &
-        {
-            return items_[idx]; // bounds checking is for debug builds
-        }
-
-    private:
-        std::array<yaml_value, YAML_CT_MAX_ITEMS> items_{};
-        std::size_t size_{0};
+        std::size_t start;
+        std::size_t count;
     };
 
-    // mapping implementation because apparently maps are hard
-    struct mapping_impl
+    // yaml_value — flat tagged union, no recursive types
+    struct yaml_value
     {
-        using key_type = string_type;
-        using pair_type = std::pair<key_type, yaml_value>;
-
-        constexpr mapping_impl() noexcept = default;
-
-        constexpr auto insert(key_type key, yaml_value val) noexcept -> bool
+        enum class kind : std::uint8_t
         {
-            // check for duplicates because yaml doesn't allow them
-            for (std::size_t i = 0; i < size_; ++i)
-            {
-                if (pairs_[i].first == key)
-                {
-                    return false; // duplicate key
-                }
-            }
+            null,
+            boolean,
+            integer,
+            floating,
+            string,
+            sequence,
+            mapping
+        };
 
-            if (size_ >= YAML_CT_MAX_ITEMS)
-                return false; // overflow protection
-            pairs_[size_++] = {std::move(key), std::move(val)};
-            return true;
+        kind kind_{kind::null};
+
+        union data_t
+        {
+            constexpr data_t() noexcept : dummy_{} {}
+            constexpr ~data_t() noexcept {}
+            char dummy_;
+            bool bool_;
+            std::int64_t int_;
+            double float_;
+            string_type str_;
+            container_ref children_;
+        } data_{};
+
+        constexpr yaml_value() noexcept = default;
+
+        constexpr yaml_value(yaml_value const &o) noexcept : kind_{o.kind_}
+        {
+            switch (kind_)
+            {
+            case kind::string:
+                std::construct_at(&data_.str_, o.data_.str_);
+                break;
+            case kind::boolean:
+                data_.bool_ = o.data_.bool_;
+                break;
+            case kind::integer:
+                data_.int_ = o.data_.int_;
+                break;
+            case kind::floating:
+                data_.float_ = o.data_.float_;
+                break;
+            case kind::sequence:
+            case kind::mapping:
+                data_.children_ = o.data_.children_;
+                break;
+            default:
+                break;
+            }
         }
 
-        [[nodiscard]] constexpr auto find(std::string_view key) const noexcept
+        constexpr yaml_value(yaml_value &&o) noexcept : kind_{o.kind_}
+        {
+            switch (kind_)
+            {
+            case kind::string:
+                std::construct_at(&data_.str_, std::move(o.data_.str_));
+                break;
+            case kind::boolean:
+                data_.bool_ = o.data_.bool_;
+                break;
+            case kind::integer:
+                data_.int_ = o.data_.int_;
+                break;
+            case kind::floating:
+                data_.float_ = o.data_.float_;
+                break;
+            case kind::sequence:
+            case kind::mapping:
+                data_.children_ = o.data_.children_;
+                break;
+            default:
+                break;
+            }
+        }
+
+        constexpr ~yaml_value() noexcept
+        {
+            if (kind_ == kind::string)
+                std::destroy_at(&data_.str_);
+        }
+
+        constexpr auto operator=(yaml_value const &o) noexcept -> yaml_value &
+        {
+            if (this != &o)
+            {
+                std::destroy_at(this);
+                std::construct_at(this, o);
+            }
+            return *this;
+        }
+
+        constexpr auto operator=(yaml_value &&o) noexcept -> yaml_value &
+        {
+            if (this != &o)
+            {
+                std::destroy_at(this);
+                std::construct_at(this, std::move(o));
+            }
+            return *this;
+        }
+
+        // factory methods
+        static constexpr auto make_null() noexcept -> yaml_value { return {}; }
+
+        static constexpr auto make_bool(bool b) noexcept -> yaml_value
+        {
+            yaml_value v;
+            v.kind_ = kind::boolean;
+            v.data_.bool_ = b;
+            return v;
+        }
+
+        static constexpr auto make_int(std::int64_t i) noexcept -> yaml_value
+        {
+            yaml_value v;
+            v.kind_ = kind::integer;
+            v.data_.int_ = i;
+            return v;
+        }
+
+        static constexpr auto make_float(double f) noexcept -> yaml_value
+        {
+            yaml_value v;
+            v.kind_ = kind::floating;
+            v.data_.float_ = f;
+            return v;
+        }
+
+        static constexpr auto make_string(string_type s) noexcept -> yaml_value
+        {
+            yaml_value v;
+            v.kind_ = kind::string;
+            std::construct_at(&v.data_.str_, std::move(s));
+            return v;
+        }
+
+        static constexpr auto make_sequence(std::size_t start, std::size_t count) noexcept -> yaml_value
+        {
+            yaml_value v;
+            v.kind_ = kind::sequence;
+            v.data_.children_ = {start, count};
+            return v;
+        }
+
+        static constexpr auto make_mapping(std::size_t start, std::size_t count) noexcept -> yaml_value
+        {
+            yaml_value v;
+            v.kind_ = kind::mapping;
+            v.data_.children_ = {start, count};
+            return v;
+        }
+
+        // type checks
+        [[nodiscard]] constexpr auto is_null() const noexcept -> bool { return kind_ == kind::null; }
+        [[nodiscard]] constexpr auto is_bool() const noexcept -> bool { return kind_ == kind::boolean; }
+        [[nodiscard]] constexpr auto is_int() const noexcept -> bool { return kind_ == kind::integer; }
+        [[nodiscard]] constexpr auto is_float() const noexcept -> bool { return kind_ == kind::floating; }
+        [[nodiscard]] constexpr auto is_string() const noexcept -> bool { return kind_ == kind::string; }
+        [[nodiscard]] constexpr auto is_sequence() const noexcept -> bool { return kind_ == kind::sequence; }
+        [[nodiscard]] constexpr auto is_mapping() const noexcept -> bool { return kind_ == kind::mapping; }
+
+        // scalar accessors
+        [[nodiscard]] constexpr auto as_bool() const noexcept -> bool { return data_.bool_; }
+        [[nodiscard]] constexpr auto as_int() const noexcept -> std::int64_t { return data_.int_; }
+        [[nodiscard]] constexpr auto as_float() const noexcept -> double { return data_.float_; }
+        [[nodiscard]] constexpr auto as_string() const noexcept -> std::string_view { return data_.str_.view(); }
+    };
+
+    // pool entry — a value with an optional key (for mapping entries)
+    struct pool_entry
+    {
+        string_type key{};
+        yaml_value value{};
+    };
+
+    // document — holds the root value and a flat pool of all container children
+    struct document
+    {
+        yaml_value root_{};
+        std::array<pool_entry, YAML_CT_MAX_NODES> pool_{};
+        std::size_t pool_size_{0};
+
+        constexpr document() noexcept = default;
+
+        // allocate contiguous entries in the pool, return start index
+        constexpr auto alloc(std::size_t count) noexcept -> std::size_t
+        {
+            auto start = pool_size_;
+            pool_size_ += count;
+            return start;
+        }
+
+        // find a key in a mapping value
+        [[nodiscard]] constexpr auto find(yaml_value const &v, std::string_view key) const noexcept
             -> std::optional<yaml_value>
         {
-            for (std::size_t i = 0; i < size_; ++i)
+            if (v.kind_ != yaml_value::kind::mapping)
+                return std::nullopt;
+            for (std::size_t i = 0; i < v.data_.children_.count; ++i)
             {
-                if (pairs_[i].first.view() == key)
-                {
-                    return pairs_[i].second;
-                }
+                auto &entry = pool_[v.data_.children_.start + i];
+                if (entry.key.view() == key)
+                    return entry.value;
             }
             return std::nullopt;
         }
 
-        [[nodiscard]] constexpr auto size() const noexcept -> std::size_t
+        // get sequence element by index
+        [[nodiscard]] constexpr auto at(yaml_value const &v, std::size_t idx) const noexcept
+            -> yaml_value const &
         {
-            return size_;
+            return pool_[v.data_.children_.start + idx].value;
         }
 
-        [[nodiscard]] constexpr auto operator[](std::size_t idx) const noexcept
-            -> pair_type const &
+        // get container size (sequence or mapping)
+        [[nodiscard]] constexpr auto size(yaml_value const &v) const noexcept -> std::size_t
         {
-            return pairs_[idx];
+            if (v.kind_ == yaml_value::kind::sequence || v.kind_ == yaml_value::kind::mapping)
+                return v.data_.children_.count;
+            return 0;
         }
 
-    private:
-        std::array<pair_type, YAML_CT_MAX_ITEMS> pairs_{};
-        std::size_t size_{0};
-    };
-
-    // NOW we can properly implement yaml_container with complete types
-    // this is how you do type erasure without being a complete moron
-    struct yaml_container
-    {
-        enum class type
+        // get mapping key at index
+        [[nodiscard]] constexpr auto key_at(yaml_value const &v, std::size_t idx) const noexcept
+            -> std::string_view
         {
-            none,
-            sequence,
-            mapping
-        };
-        type kind_{type::none};
-
-        // simplified alignment - both types have same alignment anyway
-        static constexpr std::size_t storage_size_ =
-            sizeof(sequence_impl) > sizeof(mapping_impl) ? sizeof(sequence_impl) : sizeof(mapping_impl);
-        static constexpr std::size_t storage_align_ =
-            alignof(sequence_impl) > alignof(mapping_impl) ? alignof(sequence_impl) : alignof(mapping_impl);
-
-        alignas(storage_align_) char storage_[storage_size_];
-
-        constexpr yaml_container() noexcept = default;
-
-        constexpr yaml_container(sequence_impl &&s) noexcept : kind_{type::sequence}
-        {
-            new (storage_) sequence_impl(std::move(s));
+            return pool_[v.data_.children_.start + idx].key.view();
         }
-
-        constexpr yaml_container(mapping_impl &&m) noexcept : kind_{type::mapping}
-        {
-            new (storage_) mapping_impl(std::move(m));
-        }
-
-        constexpr yaml_container(yaml_container const &other) noexcept : kind_{other.kind_}
-        {
-            if (kind_ == type::sequence)
-            {
-                new (storage_) sequence_impl(*reinterpret_cast<sequence_impl const *>(other.storage_));
-            }
-            else if (kind_ == type::mapping)
-            {
-                new (storage_) mapping_impl(*reinterpret_cast<mapping_impl const *>(other.storage_));
-            }
-        }
-
-        constexpr yaml_container(yaml_container &&other) noexcept : kind_{other.kind_}
-        {
-            if (kind_ == type::sequence)
-            {
-                new (storage_) sequence_impl(std::move(*reinterpret_cast<sequence_impl *>(other.storage_)));
-            }
-            else if (kind_ == type::mapping)
-            {
-                new (storage_) mapping_impl(std::move(*reinterpret_cast<mapping_impl *>(other.storage_)));
-            }
-        }
-
-        constexpr ~yaml_container() noexcept
-        {
-            if (kind_ == type::sequence)
-            {
-                reinterpret_cast<sequence_impl *>(storage_)->~sequence_impl();
-            }
-            else if (kind_ == type::mapping)
-            {
-                reinterpret_cast<mapping_impl *>(storage_)->~mapping_impl();
-            }
-        }
-
-        constexpr auto operator=(yaml_container const &other) noexcept -> yaml_container &
-        {
-            if (this != &other)
-            {
-                this->~yaml_container();
-                new (this) yaml_container(other);
-            }
-            return *this;
-        }
-
-        constexpr auto operator=(yaml_container &&other) noexcept -> yaml_container &
-        {
-            if (this != &other)
-            {
-                this->~yaml_container();
-                new (this) yaml_container(std::move(other));
-            }
-            return *this;
-        }
-
-        [[nodiscard]] constexpr auto as_sequence() noexcept -> sequence_impl &
-        {
-            return *reinterpret_cast<sequence_impl *>(storage_);
-        }
-
-        [[nodiscard]] constexpr auto as_sequence() const noexcept -> sequence_impl const &
-        {
-            return *reinterpret_cast<sequence_impl const *>(storage_);
-        }
-
-        [[nodiscard]] constexpr auto as_mapping() noexcept -> mapping_impl &
-        {
-            return *reinterpret_cast<mapping_impl *>(storage_);
-        }
-
-        [[nodiscard]] constexpr auto as_mapping() const noexcept -> mapping_impl const &
-        {
-            return *reinterpret_cast<mapping_impl const *>(storage_);
-        }
-
-        [[nodiscard]] constexpr auto is_sequence() const noexcept -> bool { return kind_ == type::sequence; }
-        [[nodiscard]] constexpr auto is_mapping() const noexcept -> bool { return kind_ == type::mapping; }
-    };
-
-    // Template aliases for backward compatibility
-    template <std::size_t MaxItems = YAML_CT_MAX_ITEMS>
-    using sequence = sequence_impl;
-
-    template <std::size_t MaxPairs = YAML_CT_MAX_ITEMS>
-    using mapping = mapping_impl;
-
-    template <std::size_t MaxStringSize = YAML_CT_MAX_STRING_SIZE, std::size_t MaxItems = YAML_CT_MAX_ITEMS>
-    using value = yaml_value;
-
-    // document structure because yaml can have multiple documents
-    struct document
-    {
-        using value_type = yaml_value;
-        value_type root_{};
-
-        constexpr document() noexcept = default;
-        constexpr explicit document(value_type root) noexcept
-            : root_{std::move(root)} {}
     };
 
 } // namespace yaml::ct::detail

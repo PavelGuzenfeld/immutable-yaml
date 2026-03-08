@@ -5,45 +5,34 @@
 
 int main()
 {
-    constexpr auto& config = yaml::embedded::sample_config;
+    constexpr auto& doc = yaml::embedded::sample_config;
 
     // Verify it parsed into a mapping
-    static_assert(std::holds_alternative<yaml::ct::detail::yaml_container>(config.root_));
-
-    auto& root = std::get<yaml::ct::detail::yaml_container>(config.root_);
-    assert(root.is_mapping());
-
-    auto& mapping = root.as_mapping();
+    static_assert(doc.root_.is_mapping());
 
     // Access nested "database" section
-    auto db = mapping.find("database");
+    auto db = doc.find(doc.root_, "database");
     assert(db.has_value());
+    assert(db->is_mapping());
 
-    auto& db_container = std::get<yaml::ct::detail::yaml_container>(*db);
-    assert(db_container.is_mapping());
-
-    auto& db_map = db_container.as_mapping();
-    auto host = db_map.find("host");
+    auto host = doc.find(*db, "host");
     assert(host.has_value());
+    assert(host->as_string() == "localhost");
 
-    auto& host_str = std::get<yaml::ct::detail::string_type>(*host);
-    assert(host_str.view() == "localhost");
-
-    auto port = db_map.find("port");
+    auto port = doc.find(*db, "port");
     assert(port.has_value());
-    assert(std::get<yaml::ct::detail::integer>(*port) == 5432);
+    assert(port->as_int() == 5432);
 
-    auto ssl = db_map.find("ssl");
+    auto ssl = doc.find(*db, "ssl");
     assert(ssl.has_value());
-    assert(std::get<yaml::ct::detail::boolean>(*ssl) == true);
+    assert(ssl->as_bool() == true);
 
     // Access nested "cache" section
-    auto cache = mapping.find("cache");
+    auto cache = doc.find(doc.root_, "cache");
     assert(cache.has_value());
 
-    auto& cache_container = std::get<yaml::ct::detail::yaml_container>(*cache);
-    auto& cache_map = cache_container.as_mapping();
-    assert(std::get<yaml::ct::detail::integer>(*cache_map.find("ttl")) == 3600);
+    auto ttl = doc.find(*cache, "ttl");
+    assert(ttl->as_int() == 3600);
 
     std::cout << "yaml embed test passed\n";
     return 0;

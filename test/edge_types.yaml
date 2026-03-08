@@ -1,0 +1,9 @@
+string_val: "hello"
+integer_val: 42
+negative_int: -17
+zero: 0
+float_val: 3.14
+bool_true: true
+bool_false: false
+null_val: null
+large_int: 999999

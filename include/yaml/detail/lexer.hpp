@@ -1,7 +1,6 @@
 #pragma once
 
-// buckle up buttercup, this is where the real parsing magic happens
-// and by magic i mean actual computer science instead of regex vomit
+// Compile-time YAML lexer — tokenizes input into a fixed-size token array
 
 #include "types.hpp"
 #include <array>
@@ -48,7 +47,7 @@ namespace yaml::ct::detail
                 tokens[token_count++] = std::get<token>(token_result);
             }
 
-            // add eof token because we're civilized
+            // add eof token
             if (token_count < MaxTokens)
             {
                 tokens[token_count] = token{token_type::eof, {}, s.line, s.column};
@@ -142,6 +141,11 @@ namespace yaml::ct::detail
                     // sequence entry
                     advance(input, s);
                     return token{token_type::sequence_entry, "-", start_line, start_column};
+                }
+                else if (is_digit(peek_next(input, s)))
+                {
+                    // negative number
+                    return parse_number(input, s);
                 }
                 break;
 

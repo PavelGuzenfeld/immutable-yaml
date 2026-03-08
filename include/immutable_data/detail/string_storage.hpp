@@ -33,6 +33,12 @@ namespace data::detail
             return size_;
         }
 
+        constexpr void push_back(char c) noexcept
+        {
+            if (size_ < MaxSize - 1)
+                data_[size_++] = c;
+        }
+
         [[nodiscard]] constexpr auto operator<=>(const string_storage &) const = default;
 
     private:

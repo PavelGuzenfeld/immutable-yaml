@@ -25,7 +25,7 @@ namespace data::json::detail
 
         constexpr lexer() noexcept = default;
 
-        constexpr auto tokenize(std::string_view input) noexcept -> std::variant<token_array<MaxTokens>, data::error_code>
+        constexpr auto tokenize(std::string_view input) noexcept -> std::variant<token_array<MaxTokens>, data::parse_error>
         {
             token_array<MaxTokens> tokens{};
             std::size_t token_count = 0;
@@ -39,8 +39,8 @@ namespace data::json::detail
                     break;
 
                 auto token_result = next_token(input, s);
-                if (std::holds_alternative<data::error_code>(token_result))
-                    return std::get<data::error_code>(token_result);
+                if (std::holds_alternative<data::parse_error>(token_result))
+                    return std::get<data::parse_error>(token_result);
 
                 tokens[token_count++] = std::get<token>(token_result);
             }
@@ -91,7 +91,7 @@ namespace data::json::detail
             }
         }
 
-        static constexpr auto next_token(std::string_view input, state &s) noexcept -> std::variant<token, data::error_code>
+        static constexpr auto next_token(std::string_view input, state &s) noexcept -> std::variant<token, data::parse_error>
         {
             char c = peek(input, s);
             std::size_t start_line = s.line;
@@ -130,10 +130,10 @@ namespace data::json::detail
                 break;
             }
 
-            return data::error_code::unexpected_token;
+            return data::parse_error{data::error_code::unexpected_token, s.line, s.column};
         }
 
-        static constexpr auto parse_string(std::string_view input, state &s) noexcept -> std::variant<token, data::error_code>
+        static constexpr auto parse_string(std::string_view input, state &s) noexcept -> std::variant<token, data::parse_error>
         {
             std::size_t start_line = s.line;
             std::size_t start_column = s.column;
@@ -146,7 +146,7 @@ namespace data::json::detail
                 {
                     advance(input, s);
                     if (at_end(input, s))
-                        return data::error_code::unterminated_string;
+                        return data::parse_error{data::error_code::unterminated_string, start_line, start_column};
                     advance(input, s); // skip escaped char
                 }
                 else
@@ -156,14 +156,14 @@ namespace data::json::detail
             }
 
             if (at_end(input, s))
-                return data::error_code::unterminated_string;
+                return data::parse_error{data::error_code::unterminated_string, start_line, start_column};
 
             advance(input, s); // skip closing "
             std::string_view value = input.substr(start_pos, s.position - start_pos);
             return token{token_type::quoted_string, value, start_line, start_column};
         }
 
-        static constexpr auto parse_number(std::string_view input, state &s) noexcept -> std::variant<token, data::error_code>
+        static constexpr auto parse_number(std::string_view input, state &s) noexcept -> std::variant<token, data::parse_error>
         {
             std::size_t start_line = s.line;
             std::size_t start_column = s.column;
@@ -198,7 +198,7 @@ namespace data::json::detail
             return token{type, value, start_line, start_column};
         }
 
-        static constexpr auto parse_bool(std::string_view input, state &s) noexcept -> std::variant<token, data::error_code>
+        static constexpr auto parse_bool(std::string_view input, state &s) noexcept -> std::variant<token, data::parse_error>
         {
             std::size_t start_line = s.line;
             std::size_t start_column = s.column;
@@ -223,10 +223,10 @@ namespace data::json::detail
                     return token{token_type::boolean_literal, value, start_line, start_column};
             }
 
-            return data::error_code::unexpected_token;
+            return data::parse_error{data::error_code::unexpected_token, start_line, start_column};
         }
 
-        static constexpr auto parse_null(std::string_view input, state &s) noexcept -> std::variant<token, data::error_code>
+        static constexpr auto parse_null(std::string_view input, state &s) noexcept -> std::variant<token, data::parse_error>
         {
             std::size_t start_line = s.line;
             std::size_t start_column = s.column;
@@ -239,7 +239,7 @@ namespace data::json::detail
             if (value == "null")
                 return token{token_type::null_literal, value, start_line, start_column};
 
-            return data::error_code::unexpected_token;
+            return data::parse_error{data::error_code::unexpected_token, start_line, start_column};
         }
     };
 

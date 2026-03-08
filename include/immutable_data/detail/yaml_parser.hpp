@@ -16,7 +16,7 @@ namespace data::yaml::detail
         constexpr explicit parser(const token_array<MaxTokens> &tokens, document &doc) noexcept
             : tokens_{tokens}, doc_{doc} {}
 
-        constexpr auto parse_document() noexcept -> std::variant<document, data::error_code>
+        constexpr auto parse_document() noexcept -> std::variant<document, data::parse_error>
         {
             if (current_token().type_ == token_type::document_start)
                 advance();
@@ -24,11 +24,11 @@ namespace data::yaml::detail
             if (current_token().type_ == token_type::mapping_key ||
                 current_token().type_ == token_type::sequence_end ||
                 current_token().type_ == token_type::mapping_end)
-                return data::error_code::unexpected_token;
+                return make_error(data::error_code::unexpected_token);
 
             auto value_result = parse_value();
-            if (std::holds_alternative<data::error_code>(value_result))
-                return std::get<data::error_code>(value_result);
+            if (std::holds_alternative<data::parse_error>(value_result))
+                return std::get<data::parse_error>(value_result);
 
             doc_.root_ = std::get<value>(value_result);
             return doc_;
@@ -37,8 +37,13 @@ namespace data::yaml::detail
     private:
         constexpr auto current_token() const noexcept -> const token & { return tokens_[position_]; }
         constexpr auto advance() noexcept -> void { if (position_ < MaxTokens - 1) ++position_; }
+        constexpr auto make_error(data::error_code ec) const noexcept -> data::parse_error
+        {
+            auto const &tok = current_token();
+            return {ec, tok.line_, tok.column_};
+        }
 
-        constexpr auto parse_value() noexcept -> std::variant<value, data::error_code>
+        constexpr auto parse_value() noexcept -> std::variant<value, data::parse_error>
         {
             const auto &tok = current_token();
             switch (tok.type_)
@@ -66,11 +71,11 @@ namespace data::yaml::detail
             case token_type::sequence_entry:
                 return parse_block_sequence();
             default:
-                return data::error_code::unexpected_token;
+                return make_error(data::error_code::unexpected_token);
             }
         }
 
-        constexpr auto parse_integer() noexcept -> std::variant<value, data::error_code>
+        constexpr auto parse_integer() noexcept -> std::variant<value, data::parse_error>
         {
             const auto &tok = current_token();
             advance();
@@ -85,7 +90,7 @@ namespace data::yaml::detail
             return value::make_int(negative ? -result : result);
         }
 
-        constexpr auto parse_float() noexcept -> std::variant<value, data::error_code>
+        constexpr auto parse_float() noexcept -> std::variant<value, data::parse_error>
         {
             const auto &tok = current_token();
             advance();
@@ -110,7 +115,7 @@ namespace data::yaml::detail
             return value::make_float(negative ? -result : result);
         }
 
-        constexpr auto parse_string_raw() noexcept -> std::variant<string_type, data::error_code>
+        constexpr auto parse_string_raw() noexcept -> std::variant<string_type, data::parse_error>
         {
             const auto &tok = current_token();
             advance();
@@ -124,15 +129,15 @@ namespace data::yaml::detail
             return string_type{tok.value_};
         }
 
-        constexpr auto parse_string_value() noexcept -> std::variant<value, data::error_code>
+        constexpr auto parse_string_value() noexcept -> std::variant<value, data::parse_error>
         {
             auto result = parse_string_raw();
-            if (std::holds_alternative<data::error_code>(result))
-                return std::get<data::error_code>(result);
+            if (std::holds_alternative<data::parse_error>(result))
+                return std::get<data::parse_error>(result);
             return value::make_string(std::get<string_type>(result));
         }
 
-        constexpr auto parse_flow_sequence() noexcept -> std::variant<value, data::error_code>
+        constexpr auto parse_flow_sequence() noexcept -> std::variant<value, data::parse_error>
         {
             advance(); // skip [
             std::array<value, DATA_CT_MAX_ITEMS> temp{};
@@ -144,22 +149,22 @@ namespace data::yaml::detail
             {
                 if (current_token().type_ == token_type::comma)
                 {
-                    if (expect_value) return data::error_code::unexpected_token;
+                    if (expect_value) return make_error(data::error_code::unexpected_token);
                     advance();
                     expect_value = true;
                     continue;
                 }
-                if (!expect_value) return data::error_code::unexpected_token;
+                if (!expect_value) return make_error(data::error_code::unexpected_token);
 
                 auto value_result = parse_value();
-                if (std::holds_alternative<data::error_code>(value_result))
-                    return std::get<data::error_code>(value_result);
-                if (count >= DATA_CT_MAX_ITEMS) return data::error_code::invalid_syntax;
+                if (std::holds_alternative<data::parse_error>(value_result))
+                    return std::get<data::parse_error>(value_result);
+                if (count >= DATA_CT_MAX_ITEMS) return make_error(data::error_code::invalid_syntax);
                 temp[count++] = std::get<value>(value_result);
                 expect_value = false;
             }
 
-            if (expect_value && count > 0) return data::error_code::unexpected_token;
+            if (expect_value && count > 0) return make_error(data::error_code::unexpected_token);
             if (current_token().type_ == token_type::sequence_end) advance();
 
             auto start = doc_.pool_size_;
@@ -172,7 +177,7 @@ namespace data::yaml::detail
             return value::make_sequence(start, count);
         }
 
-        constexpr auto parse_flow_mapping() noexcept -> std::variant<value, data::error_code>
+        constexpr auto parse_flow_mapping() noexcept -> std::variant<value, data::parse_error>
         {
             advance(); // skip {
             std::array<pool_entry, DATA_CT_MAX_ITEMS> temp{};
@@ -184,35 +189,35 @@ namespace data::yaml::detail
             {
                 if (current_token().type_ == token_type::comma)
                 {
-                    if (expect_key) return data::error_code::unexpected_token;
+                    if (expect_key) return make_error(data::error_code::unexpected_token);
                     advance();
                     expect_key = true;
                     continue;
                 }
-                if (!expect_key) return data::error_code::unexpected_token;
+                if (!expect_key) return make_error(data::error_code::unexpected_token);
 
                 auto key_result = parse_string_raw();
-                if (std::holds_alternative<data::error_code>(key_result))
-                    return std::get<data::error_code>(key_result);
+                if (std::holds_alternative<data::parse_error>(key_result))
+                    return std::get<data::parse_error>(key_result);
                 auto key = std::get<string_type>(key_result);
 
                 for (std::size_t j = 0; j < count; ++j)
                     if (temp[j].key.view() == key.view())
-                        return data::error_code::duplicate_key;
+                        return make_error(data::error_code::duplicate_key);
 
                 if (current_token().type_ != token_type::mapping_key)
-                    return data::error_code::unexpected_token;
+                    return make_error(data::error_code::unexpected_token);
                 advance();
 
                 auto value_result = parse_value();
-                if (std::holds_alternative<data::error_code>(value_result))
-                    return std::get<data::error_code>(value_result);
-                if (count >= DATA_CT_MAX_ITEMS) return data::error_code::invalid_syntax;
+                if (std::holds_alternative<data::parse_error>(value_result))
+                    return std::get<data::parse_error>(value_result);
+                if (count >= DATA_CT_MAX_ITEMS) return make_error(data::error_code::invalid_syntax);
                 temp[count++] = pool_entry{std::move(key), std::get<value>(value_result)};
                 expect_key = false;
             }
 
-            if (expect_key && count > 0) return data::error_code::unexpected_token;
+            if (expect_key && count > 0) return make_error(data::error_code::unexpected_token);
             if (current_token().type_ == token_type::mapping_end) advance();
 
             auto start = doc_.pool_size_;
@@ -221,7 +226,7 @@ namespace data::yaml::detail
             return value::make_mapping(start, count);
         }
 
-        constexpr auto parse_block_sequence() noexcept -> std::variant<value, data::error_code>
+        constexpr auto parse_block_sequence() noexcept -> std::variant<value, data::parse_error>
         {
             std::array<value, DATA_CT_MAX_ITEMS> temp{};
             std::size_t count = 0;
@@ -232,9 +237,9 @@ namespace data::yaml::detail
             {
                 advance(); // skip -
                 auto value_result = parse_value();
-                if (std::holds_alternative<data::error_code>(value_result))
-                    return std::get<data::error_code>(value_result);
-                if (count >= DATA_CT_MAX_ITEMS) return data::error_code::invalid_syntax;
+                if (std::holds_alternative<data::parse_error>(value_result))
+                    return std::get<data::parse_error>(value_result);
+                if (count >= DATA_CT_MAX_ITEMS) return make_error(data::error_code::invalid_syntax);
                 temp[count++] = std::get<value>(value_result);
             }
 
@@ -248,7 +253,7 @@ namespace data::yaml::detail
             return value::make_sequence(start, count);
         }
 
-        constexpr auto parse_block_mapping() noexcept -> std::variant<value, data::error_code>
+        constexpr auto parse_block_mapping() noexcept -> std::variant<value, data::parse_error>
         {
             std::array<pool_entry, DATA_CT_MAX_ITEMS> temp{};
             std::size_t count = 0;
@@ -259,22 +264,22 @@ namespace data::yaml::detail
                    current_token().column_ == expected_col)
             {
                 auto key_result = parse_string_raw();
-                if (std::holds_alternative<data::error_code>(key_result))
-                    return std::get<data::error_code>(key_result);
+                if (std::holds_alternative<data::parse_error>(key_result))
+                    return std::get<data::parse_error>(key_result);
                 auto key = std::get<string_type>(key_result);
 
                 for (std::size_t j = 0; j < count; ++j)
                     if (temp[j].key.view() == key.view())
-                        return data::error_code::duplicate_key;
+                        return make_error(data::error_code::duplicate_key);
 
                 if (current_token().type_ != token_type::mapping_key)
-                    return data::error_code::unexpected_token;
+                    return make_error(data::error_code::unexpected_token);
                 advance();
 
                 auto value_result = parse_value();
-                if (std::holds_alternative<data::error_code>(value_result))
-                    return std::get<data::error_code>(value_result);
-                if (count >= DATA_CT_MAX_ITEMS) return data::error_code::invalid_syntax;
+                if (std::holds_alternative<data::parse_error>(value_result))
+                    return std::get<data::parse_error>(value_result);
+                if (count >= DATA_CT_MAX_ITEMS) return make_error(data::error_code::invalid_syntax);
                 temp[count++] = pool_entry{std::move(key), std::get<value>(value_result)};
             }
 

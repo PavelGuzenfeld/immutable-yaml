@@ -57,8 +57,8 @@ num: 42
 static_assert(commented.root_.is_mapping());
 
 constexpr auto bad_result = parse(R"({a: 1, a: 2})");
-static_assert(std::holds_alternative<data::error_code>(bad_result));
-static_assert(std::get<data::error_code>(bad_result) == data::error_code::duplicate_key);
+static_assert(std::holds_alternative<data::parse_error>(bad_result));
+static_assert(std::get<data::parse_error>(bad_result).code == data::error_code::duplicate_key);
 
 // --- Runtime tests ---
 
@@ -132,7 +132,9 @@ TEST_CASE("yaml: inline comments")
 
 TEST_CASE("yaml: error handling - duplicate key")
 {
-    CHECK(std::get<data::error_code>(bad_result) == data::error_code::duplicate_key);
+    CHECK(std::get<data::parse_error>(bad_result).code == data::error_code::duplicate_key);
+    CHECK(std::get<data::parse_error>(bad_result).line > 0);
+    CHECK(std::get<data::parse_error>(bad_result).column > 0);
 }
 
 TEST_CASE("yaml: iterate sequence values")

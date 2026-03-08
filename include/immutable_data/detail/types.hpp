@@ -37,6 +37,40 @@ namespace data
         unsupported_feature,
         trailing_comma,
     };
+
+    constexpr auto error_message(error_code ec) noexcept -> std::string_view
+    {
+        switch (ec)
+        {
+        case error_code::none:                    return "no error";
+        case error_code::invalid_syntax:          return "invalid syntax";
+        case error_code::unexpected_token:        return "unexpected token";
+        case error_code::invalid_indentation:     return "invalid indentation";
+        case error_code::unterminated_string:     return "unterminated string";
+        case error_code::invalid_escape_sequence: return "invalid escape sequence";
+        case error_code::duplicate_key:           return "duplicate key";
+        case error_code::invalid_document_start:  return "invalid document start";
+        case error_code::invalid_document_end:    return "invalid document end";
+        case error_code::cyclic_reference:        return "cyclic reference";
+        case error_code::unsupported_feature:     return "unsupported feature";
+        case error_code::trailing_comma:          return "trailing comma";
+        }
+        return "unknown error";
+    }
+
+    struct parse_error
+    {
+        error_code code{error_code::none};
+        std::size_t line{0};
+        std::size_t column{0};
+
+        constexpr auto message() const noexcept -> std::string_view
+        {
+            return error_message(code);
+        }
+
+        constexpr bool operator==(parse_error const &) const noexcept = default;
+    };
 }
 
 namespace data::detail

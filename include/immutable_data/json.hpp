@@ -15,23 +15,23 @@ namespace data::json
 {
 
     using data::detail::document;
-    using data::error_code;
+    using data::parse_error;
 
     template <typename T>
-    using result = std::variant<T, error_code>;
+    using result = std::variant<T, parse_error>;
 
     template <std::size_t N>
     constexpr auto parse(const char (&str)[N]) noexcept -> result<document>
     {
         if constexpr (N <= 1)
-            return error_code::invalid_syntax;
+            return parse_error{error_code::invalid_syntax, 0, 0};
 
         std::string_view view{str, N - 1};
         detail::lexer<DATA_CT_MAX_TOKENS> lex{};
         auto tokens_result = lex.tokenize(view);
 
-        if (std::holds_alternative<error_code>(tokens_result))
-            return std::get<error_code>(tokens_result);
+        if (std::holds_alternative<parse_error>(tokens_result))
+            return std::get<parse_error>(tokens_result);
 
         auto const &tokens = std::get<data::detail::token_array<DATA_CT_MAX_TOKENS>>(tokens_result);
         data::detail::document doc{};

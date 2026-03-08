@@ -16,11 +16,11 @@ namespace data::json::detail
         constexpr explicit parser(const token_array<MaxTokens> &tokens, document &doc) noexcept
             : tokens_{tokens}, doc_{doc} {}
 
-        constexpr auto parse_document() noexcept -> std::variant<document, data::error_code>
+        constexpr auto parse_document() noexcept -> std::variant<document, data::parse_error>
         {
             auto value_result = parse_value();
-            if (std::holds_alternative<data::error_code>(value_result))
-                return std::get<data::error_code>(value_result);
+            if (std::holds_alternative<data::parse_error>(value_result))
+                return std::get<data::parse_error>(value_result);
 
             doc_.root_ = std::get<value>(value_result);
             return doc_;
@@ -29,8 +29,13 @@ namespace data::json::detail
     private:
         constexpr auto current_token() const noexcept -> const token & { return tokens_[position_]; }
         constexpr auto advance() noexcept -> void { if (position_ < MaxTokens - 1) ++position_; }
+        constexpr auto make_error(data::error_code ec) const noexcept -> data::parse_error
+        {
+            auto const &tok = current_token();
+            return {ec, tok.line_, tok.column_};
+        }
 
-        constexpr auto parse_value() noexcept -> std::variant<value, data::error_code>
+        constexpr auto parse_value() noexcept -> std::variant<value, data::parse_error>
         {
             const auto &tok = current_token();
             switch (tok.type_)
@@ -52,11 +57,11 @@ namespace data::json::detail
             case token_type::mapping_start:
                 return parse_object();
             default:
-                return data::error_code::unexpected_token;
+                return make_error(data::error_code::unexpected_token);
             }
         }
 
-        constexpr auto parse_integer() noexcept -> std::variant<value, data::error_code>
+        constexpr auto parse_integer() noexcept -> std::variant<value, data::parse_error>
         {
             const auto &tok = current_token();
             advance();
@@ -70,7 +75,7 @@ namespace data::json::detail
             return value::make_int(negative ? -result : result);
         }
 
-        constexpr auto parse_float() noexcept -> std::variant<value, data::error_code>
+        constexpr auto parse_float() noexcept -> std::variant<value, data::parse_error>
         {
             const auto &tok = current_token();
             advance();
@@ -94,11 +99,11 @@ namespace data::json::detail
             return value::make_float(negative ? -result : result);
         }
 
-        constexpr auto parse_string_raw() noexcept -> std::variant<string_type, data::error_code>
+        constexpr auto parse_string_raw() noexcept -> std::variant<string_type, data::parse_error>
         {
             const auto &tok = current_token();
             if (tok.type_ != token_type::quoted_string)
-                return data::error_code::unexpected_token;
+                return make_error(data::error_code::unexpected_token);
             advance();
             std::string_view content = tok.value_;
             if (content.size() >= 2)
@@ -106,15 +111,15 @@ namespace data::json::detail
             return string_type{content};
         }
 
-        constexpr auto parse_string_value() noexcept -> std::variant<value, data::error_code>
+        constexpr auto parse_string_value() noexcept -> std::variant<value, data::parse_error>
         {
             auto result = parse_string_raw();
-            if (std::holds_alternative<data::error_code>(result))
-                return std::get<data::error_code>(result);
+            if (std::holds_alternative<data::parse_error>(result))
+                return std::get<data::parse_error>(result);
             return value::make_string(std::get<string_type>(result));
         }
 
-        constexpr auto parse_array() noexcept -> std::variant<value, data::error_code>
+        constexpr auto parse_array() noexcept -> std::variant<value, data::parse_error>
         {
             advance(); // skip [
             std::array<value, DATA_CT_MAX_ITEMS> temp{};
@@ -129,23 +134,23 @@ namespace data::json::detail
             while (true)
             {
                 auto value_result = parse_value();
-                if (std::holds_alternative<data::error_code>(value_result))
-                    return std::get<data::error_code>(value_result);
-                if (count >= DATA_CT_MAX_ITEMS) return data::error_code::invalid_syntax;
+                if (std::holds_alternative<data::parse_error>(value_result))
+                    return std::get<data::parse_error>(value_result);
+                if (count >= DATA_CT_MAX_ITEMS) return make_error(data::error_code::invalid_syntax);
                 temp[count++] = std::get<value>(value_result);
 
                 if (current_token().type_ == token_type::comma)
                 {
                     advance();
                     if (current_token().type_ == token_type::sequence_end)
-                        return data::error_code::trailing_comma;
+                        return make_error(data::error_code::trailing_comma);
                     continue;
                 }
                 break;
             }
 
             if (current_token().type_ != token_type::sequence_end)
-                return data::error_code::unexpected_token;
+                return make_error(data::error_code::unexpected_token);
             advance();
 
             auto start = doc_.pool_size_;
@@ -158,7 +163,7 @@ namespace data::json::detail
             return value::make_sequence(start, count);
         }
 
-        constexpr auto parse_object() noexcept -> std::variant<value, data::error_code>
+        constexpr auto parse_object() noexcept -> std::variant<value, data::parse_error>
         {
             advance(); // skip {
             std::array<pool_entry, DATA_CT_MAX_ITEMS> temp{};
@@ -174,39 +179,39 @@ namespace data::json::detail
             {
                 // key must be a quoted string
                 auto key_result = parse_string_raw();
-                if (std::holds_alternative<data::error_code>(key_result))
-                    return std::get<data::error_code>(key_result);
+                if (std::holds_alternative<data::parse_error>(key_result))
+                    return std::get<data::parse_error>(key_result);
                 auto key = std::get<string_type>(key_result);
 
                 // check for duplicate keys
                 for (std::size_t j = 0; j < count; ++j)
                     if (temp[j].key.view() == key.view())
-                        return data::error_code::duplicate_key;
+                        return make_error(data::error_code::duplicate_key);
 
                 // expect colon
                 if (current_token().type_ != token_type::mapping_key)
-                    return data::error_code::unexpected_token;
+                    return make_error(data::error_code::unexpected_token);
                 advance();
 
                 // parse value
                 auto value_result = parse_value();
-                if (std::holds_alternative<data::error_code>(value_result))
-                    return std::get<data::error_code>(value_result);
-                if (count >= DATA_CT_MAX_ITEMS) return data::error_code::invalid_syntax;
+                if (std::holds_alternative<data::parse_error>(value_result))
+                    return std::get<data::parse_error>(value_result);
+                if (count >= DATA_CT_MAX_ITEMS) return make_error(data::error_code::invalid_syntax);
                 temp[count++] = pool_entry{std::move(key), std::get<value>(value_result)};
 
                 if (current_token().type_ == token_type::comma)
                 {
                     advance();
                     if (current_token().type_ == token_type::mapping_end)
-                        return data::error_code::trailing_comma;
+                        return make_error(data::error_code::trailing_comma);
                     continue;
                 }
                 break;
             }
 
             if (current_token().type_ != token_type::mapping_end)
-                return data::error_code::unexpected_token;
+                return make_error(data::error_code::unexpected_token);
             advance();
 
             auto start = doc_.pool_size_;

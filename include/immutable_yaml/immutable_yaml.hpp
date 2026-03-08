@@ -69,10 +69,10 @@ namespace yaml::ct
         {
             return std::get<document>(result);
         }
-        else
-        {
-            return std::get<document>(result);
-        }
+
+        // In constexpr context this makes the call ill-formed,
+        // producing a compile-time error with the YAML source visible.
+        throw "YAML parse error";
     }
 
     template <std::size_t N>

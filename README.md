@@ -119,18 +119,25 @@ pi->as_float();           // 3.14 (double)
 auto active = doc.find(doc.root_, "active");
 active->as_bool();        // true
 
-// Sequence access
+// Sequence access by index
 auto items = doc.find(doc.root_, "items");
 doc.size(*items);         // 2
 doc.at(*items, 0).as_string();  // "one"
 
+// Iterate sequence values
+for (auto const& val : doc.values(*items)) {
+    val.as_string();  // "one", "two"
+}
+
+// Iterate mapping entries (structured bindings)
+for (auto [key, val] : doc.entries(doc.root_)) {
+    // key is std::string_view, val is yaml_value const&
+}
+
 // Type checks on any value
-value.is_null();
-value.is_bool();
-value.is_int();
-value.is_float();
-value.is_string();
-value.is_sequence();
+value.is_null();    value.is_bool();
+value.is_int();     value.is_float();
+value.is_string();  value.is_sequence();
 value.is_mapping();
 
 // Error handling without exceptions

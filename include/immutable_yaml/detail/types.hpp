@@ -286,6 +286,61 @@ namespace yaml::ct::detail
         yaml_value value{};
     };
 
+    // forward declare document for views
+    struct document;
+
+    // view for iterating sequence/mapping values: for (auto& val : doc.values(node))
+    struct value_view
+    {
+        pool_entry const *begin_;
+        pool_entry const *end_;
+
+        struct iterator
+        {
+            pool_entry const *ptr_;
+
+            constexpr auto operator*() const noexcept -> yaml_value const & { return ptr_->value; }
+            constexpr auto operator++() noexcept -> iterator & { ++ptr_; return *this; }
+            constexpr auto operator!=(iterator const &o) const noexcept -> bool { return ptr_ != o.ptr_; }
+            constexpr auto operator==(iterator const &o) const noexcept -> bool { return ptr_ == o.ptr_; }
+        };
+
+        [[nodiscard]] constexpr auto begin() const noexcept -> iterator { return {begin_}; }
+        [[nodiscard]] constexpr auto end() const noexcept -> iterator { return {end_}; }
+        [[nodiscard]] constexpr auto size() const noexcept -> std::size_t { return end_ - begin_; }
+    };
+
+    // key-value pair for mapping iteration
+    struct entry_view_item
+    {
+        std::string_view key;
+        yaml_value const &value;
+    };
+
+    // view for iterating mapping key-value pairs: for (auto [key, val] : doc.entries(node))
+    struct entry_view
+    {
+        pool_entry const *begin_;
+        pool_entry const *end_;
+
+        struct iterator
+        {
+            pool_entry const *ptr_;
+
+            constexpr auto operator*() const noexcept -> entry_view_item
+            {
+                return {ptr_->key.view(), ptr_->value};
+            }
+            constexpr auto operator++() noexcept -> iterator & { ++ptr_; return *this; }
+            constexpr auto operator!=(iterator const &o) const noexcept -> bool { return ptr_ != o.ptr_; }
+            constexpr auto operator==(iterator const &o) const noexcept -> bool { return ptr_ == o.ptr_; }
+        };
+
+        [[nodiscard]] constexpr auto begin() const noexcept -> iterator { return {begin_}; }
+        [[nodiscard]] constexpr auto end() const noexcept -> iterator { return {end_}; }
+        [[nodiscard]] constexpr auto size() const noexcept -> std::size_t { return end_ - begin_; }
+    };
+
     // document — holds the root value and a flat pool of all container children
     struct document
     {
@@ -338,6 +393,24 @@ namespace yaml::ct::detail
             -> std::string_view
         {
             return pool_[v.data_.children_.start + idx].key.view();
+        }
+
+        // iterate values in a sequence or mapping
+        [[nodiscard]] constexpr auto values(yaml_value const &v) const noexcept -> value_view
+        {
+            if (v.kind_ != yaml_value::kind::sequence && v.kind_ != yaml_value::kind::mapping)
+                return {pool_.data(), pool_.data()};
+            auto *base = pool_.data() + v.data_.children_.start;
+            return {base, base + v.data_.children_.count};
+        }
+
+        // iterate key-value entries in a mapping
+        [[nodiscard]] constexpr auto entries(yaml_value const &v) const noexcept -> entry_view
+        {
+            if (v.kind_ != yaml_value::kind::mapping)
+                return {pool_.data(), pool_.data()};
+            auto *base = pool_.data() + v.data_.children_.start;
+            return {base, base + v.data_.children_.count};
         }
     };
 

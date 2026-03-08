@@ -146,6 +146,79 @@ int main()
         std::cout << "  error handling (duplicate key): OK\n";
     }
 
+    // --- Iteration tests ---
+
+    {
+        // iterate sequence values
+        std::int64_t sum = 0;
+        std::size_t count = 0;
+        for (auto const &val : seq_doc.values(seq_doc.root_))
+        {
+            sum += val.as_int();
+            ++count;
+        }
+        assert(count == 3);
+        assert(sum == 60); // 10 + 20 + 30
+        std::cout << "  iterate sequence values: OK\n";
+    }
+
+    {
+        // iterate mapping values
+        std::int64_t sum = 0;
+        for (auto const &val : map_doc.values(map_doc.root_))
+        {
+            sum += val.as_int();
+        }
+        assert(sum == 6); // 1 + 2 + 3
+        std::cout << "  iterate mapping values: OK\n";
+    }
+
+    {
+        // iterate mapping entries (structured bindings)
+        std::size_t count = 0;
+        for (auto [key, val] : multi.entries(multi.root_))
+        {
+            if (key == "a") assert(val.as_int() == 1);
+            else if (key == "b") assert(val.as_int() == 2);
+            else if (key == "c") assert(val.as_int() == 3);
+            ++count;
+        }
+        assert(count == 3);
+        std::cout << "  iterate mapping entries: OK\n";
+    }
+
+    {
+        // iterate block sequence items
+        auto items_val = block_seq.find(block_seq.root_, "items");
+        std::size_t count = 0;
+        for (auto const &val : block_seq.values(*items_val))
+        {
+            assert(val.is_string());
+            ++count;
+        }
+        assert(count == 3);
+        std::cout << "  iterate nested sequence: OK\n";
+    }
+
+    {
+        // values() on scalar returns empty range
+        auto name = simple.find(simple.root_, "name");
+        auto view = simple.values(*name);
+        assert(view.size() == 0);
+        std::size_t count = 0;
+        for ([[maybe_unused]] auto const &v : view)
+            ++count;
+        assert(count == 0);
+        std::cout << "  iterate scalar (empty): OK\n";
+    }
+
+    {
+        // entries() on sequence returns empty range
+        auto view = seq_doc.entries(seq_doc.root_);
+        assert(view.size() == 0);
+        std::cout << "  entries on sequence (empty): OK\n";
+    }
+
     std::cout << "all constexpr tests passed\n";
     return 0;
 }

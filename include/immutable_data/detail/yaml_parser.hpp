@@ -43,8 +43,19 @@ namespace data::yaml::detail
             return {ec, tok.line_, tok.column_};
         }
 
+        struct depth_guard
+        {
+            std::size_t &depth_;
+            constexpr explicit depth_guard(std::size_t &d) noexcept : depth_{d} { ++depth_; }
+            constexpr ~depth_guard() noexcept { --depth_; }
+        };
+
         constexpr auto parse_value() noexcept -> std::variant<value, data::parse_error>
         {
+            if (depth_ >= MAX_PARSE_DEPTH)
+                return make_error(data::error_code::max_depth_exceeded);
+            depth_guard guard{depth_};
+
             // Handle anchor: &name <value>
             if (current_token().type_ == token_type::anchor)
             {
@@ -303,6 +314,8 @@ namespace data::yaml::detail
             if (expect_value && count > 0) return make_error(data::error_code::unexpected_token);
             if (current_token().type_ == token_type::sequence_end) advance();
 
+            if (!doc_.can_alloc(count))
+                return make_error(data::error_code::pool_overflow);
             auto start = doc_.pool_size_;
             for (std::size_t i = 0; i < count; ++i)
             {
@@ -356,6 +369,8 @@ namespace data::yaml::detail
             if (expect_key && count > 0) return make_error(data::error_code::unexpected_token);
             if (current_token().type_ == token_type::mapping_end) advance();
 
+            if (!doc_.can_alloc(count))
+                return make_error(data::error_code::pool_overflow);
             auto start = doc_.pool_size_;
             for (std::size_t i = 0; i < count; ++i)
                 doc_.pool_[doc_.pool_size_++] = temp[i];
@@ -379,6 +394,8 @@ namespace data::yaml::detail
                 temp[count++] = std::get<value>(value_result);
             }
 
+            if (!doc_.can_alloc(count))
+                return make_error(data::error_code::pool_overflow);
             auto start = doc_.pool_size_;
             for (std::size_t i = 0; i < count; ++i)
             {
@@ -419,6 +436,8 @@ namespace data::yaml::detail
                 temp[count++] = pool_entry{std::move(key), std::get<value>(value_result)};
             }
 
+            if (!doc_.can_alloc(count))
+                return make_error(data::error_code::pool_overflow);
             auto start = doc_.pool_size_;
             for (std::size_t i = 0; i < count; ++i)
                 doc_.pool_[doc_.pool_size_++] = temp[i];
@@ -457,6 +476,7 @@ namespace data::yaml::detail
         const token_array<MaxTokens> &tokens_;
         document &doc_;
         std::size_t position_{0};
+        std::size_t depth_{0};
         std::array<anchor_entry, MAX_ANCHORS> anchors_{};
         std::size_t anchor_count_{0};
     };

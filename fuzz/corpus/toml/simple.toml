@@ -1,0 +1,6 @@
+title = "test"
+count = 42
+flag = true
+
+[section]
+key = "value"

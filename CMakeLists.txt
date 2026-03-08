@@ -67,12 +67,27 @@ install(
   DESTINATION lib/cmake/${PROJECT_NAME}
 )
 
+# pkg-config
+configure_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/${PROJECT_NAME}.pc.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.pc"
+  @ONLY
+)
+install(
+  FILES "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.pc"
+  DESTINATION lib/pkgconfig
+)
+
 if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
     include(CTest)
 
     if(BUILD_TESTING)
         add_subdirectory(test)
         add_subdirectory(examples)
+    endif()
+
+    if(BUILD_FUZZING)
+        add_subdirectory(fuzz)
     endif()
 endif()
 

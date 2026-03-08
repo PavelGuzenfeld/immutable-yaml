@@ -29,6 +29,41 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
+  build-gcc-ubsan:
+    runs-on: ubuntu-latest
+    container: gcc:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install CMake
+        run: |
+          apt-get update && apt-get install -y --no-install-recommends cmake make
+          g++ --version | head -1
+
+      - name: Configure with UBSan
+        run: |
+          cmake -B build \
+            -DCMAKE_CXX_STANDARD=23 \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DBUILD_TESTING=ON \
+            -DCMAKE_CXX_FLAGS="-fsanitize=undefined -fno-sanitize-recover=undefined -fno-sanitize=vptr"
+
+      - name: Build (parse tests only — sanitizers break constexpr embed)
+        run: |
+          cmake --build build -j$(nproc) \
+            --target immutable-data-embedder_test_yaml \
+            --target immutable-data-embedder_test_json \
+            --target immutable-data-embedder_test_toml \
+            --target immutable-data-embedder_test_xml \
+            --target immutable-data-embedder_test_safety
+
+      - name: Test
+        run: |
+          ctest --test-dir build --output-on-failure \
+            -R "yaml_parse|json_parse|toml_parse|xml_parse|safety"
+        env:
+          UBSAN_OPTIONS: print_stacktrace=1
+
   docker:
     runs-on: ubuntu-latest
     steps:
@@ -41,7 +76,7 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build-gcc, docker]
+    needs: [build-gcc, build-gcc-ubsan, docker]
     runs-on: ubuntu-latest
     permissions:
       contents: write

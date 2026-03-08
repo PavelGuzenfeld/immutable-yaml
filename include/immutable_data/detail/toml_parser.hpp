@@ -39,6 +39,13 @@ namespace data::toml::detail
             return {ec, tok.line_, tok.column_};
         }
 
+        struct depth_guard
+        {
+            std::size_t &depth_;
+            constexpr explicit depth_guard(std::size_t &d) noexcept : depth_{d} { ++depth_; }
+            constexpr ~depth_guard() noexcept { --depth_; }
+        };
+
         // Parse the body of a table (key-value pairs until EOF or next table header)
         constexpr auto parse_table_body() noexcept -> std::variant<value, data::parse_error>
         {
@@ -92,6 +99,8 @@ namespace data::toml::detail
             }
 
             // Write entries to pool
+            if (!doc_.can_alloc(count))
+                return make_error(data::error_code::pool_overflow);
             auto start = doc_.pool_size_;
             for (std::size_t i = 0; i < count; ++i)
                 doc_.pool_[doc_.pool_size_++] = entries[i];
@@ -119,6 +128,8 @@ namespace data::toml::detail
                 return make_error(data::error_code::unexpected_token);
             }
 
+            if (!doc_.can_alloc(count))
+                return make_error(data::error_code::pool_overflow);
             auto start = doc_.pool_size_;
             for (std::size_t i = 0; i < count; ++i)
                 doc_.pool_[doc_.pool_size_++] = entries[i];
@@ -175,6 +186,10 @@ namespace data::toml::detail
 
         constexpr auto parse_value() noexcept -> std::variant<value, data::parse_error>
         {
+            if (depth_ >= MAX_PARSE_DEPTH)
+                return make_error(data::error_code::max_depth_exceeded);
+            depth_guard guard{depth_};
+
             const auto &tok = current_token();
             switch (tok.type_)
             {
@@ -354,6 +369,8 @@ namespace data::toml::detail
                 return make_error(data::error_code::unexpected_token);
             advance();
 
+            if (!doc_.can_alloc(count))
+                return make_error(data::error_code::pool_overflow);
             auto start = doc_.pool_size_;
             for (std::size_t i = 0; i < count; ++i)
             {
@@ -394,6 +411,8 @@ namespace data::toml::detail
                 return make_error(data::error_code::unexpected_token);
             advance();
 
+            if (!doc_.can_alloc(count))
+                return make_error(data::error_code::pool_overflow);
             auto start = doc_.pool_size_;
             for (std::size_t i = 0; i < count; ++i)
                 doc_.pool_[doc_.pool_size_++] = temp[i];
@@ -403,6 +422,7 @@ namespace data::toml::detail
         const token_array<MaxTokens> &tokens_;
         document &doc_;
         std::size_t position_{0};
+        std::size_t depth_{0};
     };
 
 } // namespace data::toml::detail

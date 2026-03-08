@@ -45,3 +45,8 @@ data_embed(${PROJECT_NAME}_test_embed
     ${CMAKE_CURRENT_SOURCE_DIR}/app_config.xml
 )
 add_test(NAME data_embed COMMAND ${PROJECT_NAME}_test_embed)
+
+# --- Safety / hardening tests ---
+add_executable(${PROJECT_NAME}_test_safety test_safety.cpp)
+target_link_libraries(${PROJECT_NAME}_test_safety PRIVATE ${PROJECT_NAME} doctest)
+add_test(NAME safety COMMAND ${PROJECT_NAME}_test_safety)

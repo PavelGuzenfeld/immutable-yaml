@@ -17,6 +17,9 @@
 // TOML embedded file
 #include "app_settings.toml.hpp"
 
+// XML embedded file
+#include "app_config.xml.hpp"
+
 // --- YAML embed tests ---
 
 TEST_CASE("yaml embed: sample_config")
@@ -238,4 +241,38 @@ TEST_CASE("toml embed: iterate entries")
         ++count;
     }
     CHECK(count == 4);
+}
+
+// --- XML embed tests ---
+
+TEST_CASE("xml embed: app_config")
+{
+    constexpr auto& doc = data::embedded::app_config;
+    static_assert(doc.root_.is_mapping());
+
+    auto db = doc.find(doc.root_, "database");
+    REQUIRE(db);
+    CHECK(db->is_mapping());
+    CHECK(doc.find(*db, "host")->as_string() == "localhost");
+    CHECK(doc.find(*db, "port")->as_int() == 5432);
+    CHECK(doc.find(*db, "ssl")->as_bool() == true);
+
+    auto cache = doc.find(doc.root_, "cache");
+    REQUIRE(cache);
+    CHECK(doc.find(*cache, "ttl")->as_int() == 3600);
+    CHECK(doc.find(*cache, "max_size")->as_int() == 1024);
+
+    CHECK(doc.find(doc.root_, "app_name")->as_string() == "my-service");
+}
+
+TEST_CASE("xml embed: iterate entries")
+{
+    constexpr auto& doc = data::embedded::app_config;
+    std::size_t count = 0;
+    for (auto [key, val] : doc.entries(doc.root_))
+    {
+        CHECK(!key.empty());
+        ++count;
+    }
+    CHECK(count == 3);
 }

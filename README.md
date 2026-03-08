@@ -223,7 +223,7 @@ Tests and examples are only built when `BUILD_TESTING=ON` and the project is the
 - ~~**TOML frontend**~~ — ✓ shipped in PR #8
 - ~~**Multi-line YAML strings**~~ — ✓ shipped in PR #9
 - ~~**YAML anchors/aliases**~~ — ✓ shipped in PR #10
-- **XML frontend** — `data::xml::parse()` for compile-time XML configs
+- ~~**XML frontend**~~ — ✓ shipped in PR #11
 
 ## License
 

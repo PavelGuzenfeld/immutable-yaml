@@ -1,7 +1,7 @@
 #pragma once
 
-#include "lexer.hpp"
-#include "types.hpp"
+#include <immutable_yaml/detail/lexer.hpp>
+#include <immutable_yaml/detail/types.hpp>
 #include <variant>
 
 namespace yaml::ct::detail

@@ -5,8 +5,8 @@
 #include <optional>
 #include <string_view>
 #include <utility>
-#include <yaml/detail/string_storage.hpp>
-#include <yaml/detail/utils.hpp>
+#include <immutable_yaml/detail/string_storage.hpp>
+#include <immutable_yaml/detail/utils.hpp>
 
 // Configurable capacity limits
 #ifndef YAML_CT_MAX_STRING_SIZE

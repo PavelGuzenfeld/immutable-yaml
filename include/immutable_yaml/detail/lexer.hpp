@@ -2,7 +2,7 @@
 
 // Compile-time YAML lexer — tokenizes input into a fixed-size token array
 
-#include "types.hpp"
+#include <immutable_yaml/detail/types.hpp>
 #include <array>
 #include <cctype>
 #include <string_view>

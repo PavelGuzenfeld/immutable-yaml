@@ -1,6 +1,6 @@
 #include <cassert>
 #include <iostream>
-#include <yaml/yaml.hpp>
+#include <immutable_yaml/immutable_yaml.hpp>
 
 using namespace yaml::ct;
 using namespace yaml::ct::detail;

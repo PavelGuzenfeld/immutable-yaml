@@ -46,7 +46,7 @@ int main() {
 ### Option 2: Inline constexpr
 
 ```cpp
-#include <yaml/yaml.hpp>
+#include <immutable_yaml/immutable_yaml.hpp>
 
 constexpr auto config = yaml::ct::parse_or_throw(R"(
 database:

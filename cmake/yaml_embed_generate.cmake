@@ -17,7 +17,7 @@ file(WRITE "${YAML_OUTPUT}"
 // Auto-generated from ${YAML_NAME} — do not edit
 // Modify the source YAML file and rebuild
 
-#include <yaml/yaml.hpp>
+#include <immutable_yaml/immutable_yaml.hpp>
 
 namespace yaml::embedded {
 

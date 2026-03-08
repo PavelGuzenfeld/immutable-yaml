@@ -20,7 +20,7 @@
 //   #include "config.yaml.hpp"
 //   constexpr auto& cfg = yaml::embedded::config;
 
-#include "yaml.hpp"
+#include <immutable_yaml/immutable_yaml.hpp>
 
 namespace yaml::ct
 {

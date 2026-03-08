@@ -1,8 +1,8 @@
 #pragma once
 
-#include "detail/lexer.hpp"
-#include "detail/parser.hpp"
-#include "detail/types.hpp"
+#include <immutable_yaml/detail/lexer.hpp>
+#include <immutable_yaml/detail/parser.hpp>
+#include <immutable_yaml/detail/types.hpp>
 
 #include <array>
 #include <optional>

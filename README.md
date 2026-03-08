@@ -221,9 +221,9 @@ Tests and examples are only built when `BUILD_TESTING=ON` and the project is the
 ## Roadmap
 
 - ~~**TOML frontend**~~ — ✓ shipped in PR #8
+- ~~**Multi-line YAML strings**~~ — ✓ shipped in PR #9
+- ~~**YAML anchors/aliases**~~ — ✓ shipped in PR #10
 - **XML frontend** — `data::xml::parse()` for compile-time XML configs
-- **Multi-line YAML strings** — `|` (literal) and `>` (folded) block scalars
-- **YAML anchors/aliases** — `&anchor` and `*alias` support
 
 ## License
 

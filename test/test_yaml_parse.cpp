@@ -280,3 +280,98 @@ key: >
   content
 )"));
 }
+
+// --- Anchor/alias tests ---
+
+TEST_CASE("yaml: scalar anchor and alias")
+{
+    constexpr auto doc = parse_or_throw(R"(
+color: &primary blue
+theme: *primary
+)");
+    CHECK(doc.find(doc.root_, "color")->as_string() == "blue");
+    CHECK(doc.find(doc.root_, "theme")->as_string() == "blue");
+}
+
+TEST_CASE("yaml: integer anchor and alias")
+{
+    constexpr auto doc = parse_or_throw(R"(
+port: &default_port 8080
+api_port: *default_port
+)");
+    CHECK(doc.find(doc.root_, "port")->as_int() == 8080);
+    CHECK(doc.find(doc.root_, "api_port")->as_int() == 8080);
+}
+
+TEST_CASE("yaml: mapping anchor and alias")
+{
+    constexpr auto doc = parse_or_throw(R"(
+defaults: &defaults
+  host: localhost
+  port: 5432
+production:
+  db: *defaults
+)");
+    auto defaults = doc.find(doc.root_, "defaults");
+    REQUIRE(defaults);
+    CHECK(doc.find(*defaults, "host")->as_string() == "localhost");
+    CHECK(doc.find(*defaults, "port")->as_int() == 5432);
+
+    auto prod = doc.find(doc.root_, "production");
+    REQUIRE(prod);
+    auto db = doc.find(*prod, "db");
+    REQUIRE(db);
+    CHECK(db->is_mapping());
+    CHECK(doc.find(*db, "host")->as_string() == "localhost");
+    CHECK(doc.find(*db, "port")->as_int() == 5432);
+}
+
+TEST_CASE("yaml: sequence anchor and alias")
+{
+    constexpr auto doc = parse_or_throw(R"(
+colors: &palette
+  - red
+  - green
+  - blue
+theme_colors: *palette
+)");
+    auto colors = doc.find(doc.root_, "colors");
+    REQUIRE(colors);
+    CHECK(doc.size(*colors) == 3);
+
+    auto theme = doc.find(doc.root_, "theme_colors");
+    REQUIRE(theme);
+    CHECK(theme->is_sequence());
+    CHECK(doc.size(*theme) == 3);
+    CHECK(doc.at(*theme, 0).as_string() == "red");
+}
+
+TEST_CASE("yaml: multiple anchors")
+{
+    constexpr auto doc = parse_or_throw(R"(
+a: &x 10
+b: &y 20
+c: *x
+d: *y
+)");
+    CHECK(doc.find(doc.root_, "a")->as_int() == 10);
+    CHECK(doc.find(doc.root_, "b")->as_int() == 20);
+    CHECK(doc.find(doc.root_, "c")->as_int() == 10);
+    CHECK(doc.find(doc.root_, "d")->as_int() == 20);
+}
+
+TEST_CASE("yaml: alias to unknown anchor is error")
+{
+    constexpr auto r = parse(R"(
+key: *nonexistent
+)");
+    CHECK(std::holds_alternative<data::parse_error>(r));
+}
+
+TEST_CASE("yaml: anchor/alias is_valid")
+{
+    static_assert(is_valid(R"(
+a: &ref value
+b: *ref
+)"));
+}

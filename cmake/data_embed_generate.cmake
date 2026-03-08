@@ -3,8 +3,8 @@
 
 file(READ "${DATA_INPUT}" DATA_CONTENT)
 
-# For YAML files, strip full-line comments
-if(DATA_FORMAT STREQUAL "yaml")
+# For YAML/TOML files, strip full-line comments
+if(DATA_FORMAT STREQUAL "yaml" OR DATA_FORMAT STREQUAL "toml")
     string(REGEX REPLACE "\n[ \t]*#[^\n]*" "" DATA_CONTENT "${DATA_CONTENT}")
     string(REGEX REPLACE "^[ \t]*#[^\n]*\n?" "" DATA_CONTENT "${DATA_CONTENT}")
 endif()
@@ -18,6 +18,9 @@ string(STRIP "${DATA_CONTENT}" DATA_CONTENT)
 if(DATA_FORMAT STREQUAL "json")
     set(INCLUDE_HEADER "immutable_data/json.hpp")
     set(PARSE_FUNC "data::json::parse_or_throw")
+elseif(DATA_FORMAT STREQUAL "toml")
+    set(INCLUDE_HEADER "immutable_data/toml.hpp")
+    set(PARSE_FUNC "data::toml::parse_or_throw")
 else()
     set(INCLUDE_HEADER "immutable_data/yaml.hpp")
     set(PARSE_FUNC "data::yaml::parse_or_throw")

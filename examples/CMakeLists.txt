@@ -22,3 +22,8 @@ add_test(NAME example_iterate COMMAND example_iterate)
 add_executable(example_json json_basic.cpp)
 target_link_libraries(example_json PRIVATE ${PROJECT_NAME})
 add_test(NAME example_json COMMAND example_json)
+
+# Example 5: inline constexpr TOML parsing
+add_executable(example_toml toml_basic.cpp)
+target_link_libraries(example_toml PRIVATE ${PROJECT_NAME})
+add_test(NAME example_toml COMMAND example_toml)

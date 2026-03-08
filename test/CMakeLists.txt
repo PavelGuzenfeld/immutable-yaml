@@ -18,7 +18,12 @@ add_executable(${PROJECT_NAME}_test_json test_json_parse.cpp)
 target_link_libraries(${PROJECT_NAME}_test_json PRIVATE ${PROJECT_NAME} doctest)
 add_test(NAME json_parse COMMAND ${PROJECT_NAME}_test_json)
 
-# --- Embed integration tests (YAML + JSON) ---
+# --- TOML parse API tests ---
+add_executable(${PROJECT_NAME}_test_toml test_toml_parse.cpp)
+target_link_libraries(${PROJECT_NAME}_test_toml PRIVATE ${PROJECT_NAME} doctest)
+add_test(NAME toml_parse COMMAND ${PROJECT_NAME}_test_toml)
+
+# --- Embed integration tests (YAML + JSON + TOML) ---
 add_executable(${PROJECT_NAME}_test_embed test_embed.cpp)
 target_link_libraries(${PROJECT_NAME}_test_embed PRIVATE ${PROJECT_NAME} doctest)
 data_embed(${PROJECT_NAME}_test_embed
@@ -31,5 +36,6 @@ data_embed(${PROJECT_NAME}_test_embed
     ${CMAKE_CURRENT_SOURCE_DIR}/edge_sequences.yaml
     ${CMAKE_CURRENT_SOURCE_DIR}/edge_comments.yaml
     ${CMAKE_CURRENT_SOURCE_DIR}/settings.json
+    ${CMAKE_CURRENT_SOURCE_DIR}/app_settings.toml
 )
 add_test(NAME data_embed COMMAND ${PROJECT_NAME}_test_embed)

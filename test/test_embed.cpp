@@ -14,6 +14,9 @@
 // JSON embedded file
 #include "settings.json.hpp"
 
+// TOML embedded file
+#include "app_settings.toml.hpp"
+
 // --- YAML embed tests ---
 
 TEST_CASE("yaml embed: sample_config")
@@ -195,4 +198,44 @@ TEST_CASE("json embed: iterate entries")
         ++count;
     }
     CHECK(count == 3);
+}
+
+// --- TOML embed tests ---
+
+TEST_CASE("toml embed: app_settings")
+{
+    constexpr auto& doc = data::embedded::app_settings;
+    static_assert(doc.root_.is_mapping());
+
+    CHECK(doc.find(doc.root_, "title")->as_string() == "App Settings");
+
+    auto db = doc.find(doc.root_, "database");
+    REQUIRE(db);
+    CHECK(db->is_mapping());
+    CHECK(doc.find(*db, "host")->as_string() == "localhost");
+    CHECK(doc.find(*db, "port")->as_int() == 5432);
+    CHECK(doc.find(*db, "ssl")->as_bool() == true);
+
+    auto cache = doc.find(doc.root_, "cache");
+    REQUIRE(cache);
+    CHECK(doc.find(*cache, "ttl")->as_int() == 3600);
+    CHECK(doc.find(*cache, "max_size")->as_int() == 1024);
+
+    auto features = doc.find(doc.root_, "features");
+    REQUIRE(features);
+    CHECK(doc.find(*features, "auth")->as_bool() == true);
+    CHECK(doc.find(*features, "logging")->as_bool() == true);
+    CHECK(doc.find(*features, "metrics")->as_bool() == false);
+}
+
+TEST_CASE("toml embed: iterate entries")
+{
+    constexpr auto& doc = data::embedded::app_settings;
+    std::size_t count = 0;
+    for (auto [key, val] : doc.entries(doc.root_))
+    {
+        CHECK(!key.empty());
+        ++count;
+    }
+    CHECK(count == 4);
 }

@@ -1,0 +1,11 @@
+# Top-level comment
+# Another comment
+
+# Section comment
+database:
+  host: "localhost"
+  port: 5432
+
+# Cache settings
+cache:
+  ttl: 3600

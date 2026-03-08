@@ -44,6 +44,7 @@ yaml_embed(${PROJECT_NAME}_test_edge_cases
     ${CMAKE_CURRENT_SOURCE_DIR}/edge_long_strings.yaml
     ${CMAKE_CURRENT_SOURCE_DIR}/edge_types.yaml
     ${CMAKE_CURRENT_SOURCE_DIR}/edge_sequences.yaml
+    ${CMAKE_CURRENT_SOURCE_DIR}/edge_comments.yaml
 )
 add_test(NAME yaml_embed_edge_cases COMMAND ${PROJECT_NAME}_test_edge_cases)
 

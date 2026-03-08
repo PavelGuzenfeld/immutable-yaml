@@ -51,6 +51,14 @@ items:
   - "three"
 )");
 
+// Inline comments parsed at compile time
+constexpr auto commented = parse_or_throw(R"(
+# full-line comment
+key: value  # inline comment
+num: 42
+)");
+static_assert(commented.root_.is_mapping());
+
 // Error handling via parse()
 constexpr auto bad_result = parse(R"({a: 1, a: 2})");
 static_assert(std::holds_alternative<error_code>(bad_result));
@@ -121,6 +129,15 @@ int main()
         assert(block_seq.at(*items_val, 1).as_string() == "two");
         assert(block_seq.at(*items_val, 2).as_string() == "three");
         std::cout << "  block sequence: OK\n";
+    }
+
+    {
+        auto key = commented.find(commented.root_, "key");
+        assert(key.has_value());
+        assert(key->as_string() == "value");
+        auto num = commented.find(commented.root_, "num");
+        assert(num->as_int() == 42);
+        std::cout << "  inline comments: OK\n";
     }
 
     {

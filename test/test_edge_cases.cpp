@@ -7,6 +7,7 @@
 #include "edge_long_strings.yaml.hpp"
 #include "edge_types.yaml.hpp"
 #include "edge_sequences.yaml.hpp"
+#include "edge_comments.yaml.hpp"
 
 void test_minimal()
 {
@@ -166,6 +167,31 @@ void test_sequences()
     std::cout << "  sequences (typed + mixed): OK\n";
 }
 
+void test_comments()
+{
+    constexpr auto& doc = yaml::embedded::edge_comments;
+    static_assert(doc.root_.is_mapping());
+
+    // Comments should be stripped — only data remains
+    auto db = doc.find(doc.root_, "database");
+    assert(db.has_value());
+    assert(db->is_mapping());
+
+    auto host = doc.find(*db, "host");
+    assert(host->as_string() == "localhost");
+
+    auto port = doc.find(*db, "port");
+    assert(port->as_int() == 5432);
+
+    auto cache = doc.find(doc.root_, "cache");
+    assert(cache.has_value());
+
+    auto ttl = doc.find(*cache, "ttl");
+    assert(ttl->as_int() == 3600);
+
+    std::cout << "  comments stripped: OK\n";
+}
+
 int main()
 {
     std::cout << "yaml_embed edge case tests:\n";
@@ -176,6 +202,7 @@ int main()
     test_long_strings();
     test_types();
     test_sequences();
+    test_comments();
 
     std::cout << "all edge case tests passed\n";
     return 0;

@@ -45,8 +45,8 @@ constexpr auto types = parse_or_throw(R"({
 })");
 
 constexpr auto bad = parse(R"({"a": 1, "a": 2})");
-static_assert(std::holds_alternative<data::error_code>(bad));
-static_assert(std::get<data::error_code>(bad) == data::error_code::duplicate_key);
+static_assert(std::holds_alternative<data::parse_error>(bad));
+static_assert(std::get<data::parse_error>(bad).code == data::error_code::duplicate_key);
 
 // --- Runtime tests ---
 
@@ -137,14 +137,39 @@ TEST_CASE("json: iterate object entries")
 
 TEST_CASE("json: error - duplicate key")
 {
-    CHECK(std::get<data::error_code>(bad) == data::error_code::duplicate_key);
+    auto err = std::get<data::parse_error>(bad);
+    CHECK(err.code == data::error_code::duplicate_key);
+    CHECK(err.line > 0);
+    CHECK(err.column > 0);
+    CHECK(err.message() == "duplicate key");
 }
 
 TEST_CASE("json: error - trailing comma")
 {
     constexpr auto r = parse(R"([1, 2,])");
-    CHECK(std::holds_alternative<data::error_code>(r));
-    CHECK(std::get<data::error_code>(r) == data::error_code::trailing_comma);
+    CHECK(std::holds_alternative<data::parse_error>(r));
+    auto err = std::get<data::parse_error>(r);
+    CHECK(err.code == data::error_code::trailing_comma);
+    CHECK(err.message() == "trailing comma");
+}
+
+TEST_CASE("json: error - unterminated string")
+{
+    constexpr auto r = parse(R"("unterminated)");
+    CHECK(std::holds_alternative<data::parse_error>(r));
+    auto err = std::get<data::parse_error>(r);
+    CHECK(err.code == data::error_code::unterminated_string);
+    CHECK(err.line == 1);
+    CHECK(err.column == 1);
+}
+
+TEST_CASE("json: error_message function")
+{
+    CHECK(data::error_message(data::error_code::none) == "no error");
+    CHECK(data::error_message(data::error_code::invalid_syntax) == "invalid syntax");
+    CHECK(data::error_message(data::error_code::unexpected_token) == "unexpected token");
+    CHECK(data::error_message(data::error_code::duplicate_key) == "duplicate key");
+    CHECK(data::error_message(data::error_code::trailing_comma) == "trailing comma");
 }
 
 TEST_CASE("json: scalar root values")

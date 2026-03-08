@@ -4,10 +4,10 @@
 // Errors in the YAML source become compile-time errors.
 
 #include <cassert>
-#include <immutable_yaml/immutable_yaml.hpp>
+#include <immutable_data/yaml.hpp>
 
 // Parse at compile time — this YAML is baked into the binary
-constexpr auto doc = yaml::ct::parse_or_throw(R"(
+constexpr auto doc = data::yaml::parse_or_throw(R"(
 server:
   host: "0.0.0.0"
   port: 8080
@@ -17,8 +17,8 @@ debug: false
 
 // Compile-time validation
 static_assert(doc.root_.is_mapping());
-static_assert(yaml::ct::is_valid(R"(key: value)"));
-static_assert(!yaml::ct::is_valid(R"({a: 1, a: duplicate})"));
+static_assert(data::yaml::is_valid(R"(key: value)"));
+static_assert(!data::yaml::is_valid(R"({a: 1, a: duplicate})"));
 
 int main()
 {

@@ -1,8 +1,6 @@
 #pragma once
-#include <array>   // for token storage
-#include <cstdint> // for std::uint8_t
 
-namespace yaml::ct::detail
+namespace data::detail
 {
     constexpr bool is_alpha(char c) noexcept
     {
@@ -19,4 +17,9 @@ namespace yaml::ct::detail
         return is_alpha(c) || is_digit(c);
     }
 
-} // namespace yaml::ct::detail
+    constexpr bool is_hex(char c) noexcept
+    {
+        return is_digit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+    }
+
+} // namespace data::detail

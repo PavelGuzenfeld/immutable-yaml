@@ -5,9 +5,9 @@
 
 #include <cassert>
 #include <cstdio>
-#include <immutable_yaml/immutable_yaml.hpp>
+#include <immutable_data/yaml.hpp>
 
-constexpr auto doc = yaml::ct::parse_or_throw(R"(
+constexpr auto doc = data::yaml::parse_or_throw(R"(
 services:
   web:
     port: 80

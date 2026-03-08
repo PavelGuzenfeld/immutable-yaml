@@ -1,6 +1,6 @@
 // Example: embed a YAML file as a compile-time constant
 //
-// The YAML file is read at build time by CMake's yaml_embed().
+// The YAML file is read at build time by CMake's data_embed().
 // Comments are stripped, allocation sizes are computed automatically.
 // The result is a constexpr object in static storage.
 
@@ -11,7 +11,7 @@
 
 int main()
 {
-    constexpr auto& cfg = yaml::embedded::app_config;
+    constexpr auto& cfg = data::embedded::app_config;
     static_assert(cfg.root_.is_mapping());
 
     // Access nested sections

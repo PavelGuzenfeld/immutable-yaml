@@ -186,12 +186,10 @@ namespace data::yaml::detail
                 return parse_tag(input, s);
 
             case '|':
-                advance(input, s);
-                return token{token_type::literal_string, "|", start_line, start_column};
+                return parse_block_scalar(input, s, token_type::literal_string);
 
             case '>':
-                advance(input, s);
-                return token{token_type::folded_string, ">", start_line, start_column};
+                return parse_block_scalar(input, s, token_type::folded_string);
 
             default:
                 if (is_digit(c) || c == '-' || c == '+')
@@ -309,6 +307,79 @@ namespace data::yaml::detail
                 advance(input, s);
             std::string_view value = input.substr(start_pos, s.position - start_pos);
             return token{token_type::alias, value, start_line, start_column};
+        }
+
+        static constexpr auto parse_block_scalar(std::string_view input, state &s, token_type type) noexcept -> std::variant<token, data::parse_error>
+        {
+            std::size_t start_line = s.line;
+            std::size_t start_column = s.column;
+
+            advance(input, s); // skip | or >
+
+            // Skip optional chomping/indentation indicators and rest of line
+            while (!at_end(input, s) && peek(input, s) != '\n')
+                advance(input, s);
+            if (!at_end(input, s))
+                advance(input, s); // skip \n
+
+            // Find indentation of first non-blank content line (probe without modifying state)
+            std::size_t block_indent = 0;
+            {
+                std::size_t probe = s.position;
+                while (probe < input.size())
+                {
+                    std::size_t indent = 0;
+                    while (probe < input.size() && input[probe] == ' ')
+                        { ++indent; ++probe; }
+                    if (probe >= input.size() || input[probe] == '\n')
+                    {
+                        if (probe < input.size()) ++probe;
+                        continue;
+                    }
+                    block_indent = indent;
+                    break;
+                }
+            }
+
+            // No indented content — empty block scalar
+            if (block_indent == 0)
+                return token{type, {}, start_line, start_column};
+
+            // Capture all lines that are blank or indented >= block_indent
+            std::size_t content_start = s.position;
+            while (!at_end(input, s))
+            {
+                state saved = s;
+
+                // Count indentation
+                std::size_t line_indent = 0;
+                while (!at_end(input, s) && peek(input, s) == ' ')
+                    { ++line_indent; advance(input, s); }
+
+                // Blank line — always part of block
+                if (at_end(input, s) || peek(input, s) == '\n')
+                {
+                    if (!at_end(input, s))
+                        advance(input, s);
+                    continue;
+                }
+
+                // Less indentation — block ends here
+                if (line_indent < block_indent)
+                {
+                    s = saved;
+                    break;
+                }
+
+                // Part of block — skip rest of line
+                while (!at_end(input, s) && peek(input, s) != '\n')
+                    advance(input, s);
+                if (!at_end(input, s))
+                    advance(input, s);
+            }
+
+            std::string_view raw = input.substr(content_start, s.position - content_start);
+            return token{type, raw, start_line, start_column};
         }
 
         static constexpr auto parse_tag(std::string_view input, state &s) noexcept -> std::variant<token, data::parse_error>

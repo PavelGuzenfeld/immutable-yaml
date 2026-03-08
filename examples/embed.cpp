@@ -16,7 +16,7 @@ int main()
 
     // Access nested sections
     auto app = cfg.find(cfg.root_, "app");
-    assert(app.has_value());
+    assert(app);
     std::printf("app: %.*s v%.*s\n",
         static_cast<int>(cfg.find(*app, "name")->as_string().size()),
         cfg.find(*app, "name")->as_string().data(),
@@ -32,7 +32,7 @@ int main()
 
     // Iterate feature flags
     auto features = cfg.find(cfg.root_, "features");
-    assert(features->is_sequence());
+    assert(features && features->is_sequence());
     std::printf("features (%zu):", cfg.size(*features));
     for (auto const& val : cfg.values(*features))
         std::printf(" %.*s",

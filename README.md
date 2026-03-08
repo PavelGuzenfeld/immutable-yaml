@@ -220,7 +220,7 @@ Tests and examples are only built when `BUILD_TESTING=ON` and the project is the
 
 ## Roadmap
 
-- **TOML frontend** — `data::toml::parse()` with the same shared type system
+- ~~**TOML frontend**~~ — ✓ shipped in PR #8
 - **XML frontend** — `data::xml::parse()` for compile-time XML configs
 - **Multi-line YAML strings** — `|` (literal) and `>` (folded) block scalars
 - **YAML anchors/aliases** — `&anchor` and `*alias` support

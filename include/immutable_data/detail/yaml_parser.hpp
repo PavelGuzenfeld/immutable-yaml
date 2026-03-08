@@ -64,6 +64,10 @@ namespace data::yaml::detail
                     tokens_[position_ + 1].type_ == token_type::mapping_key)
                     return parse_block_mapping();
                 return parse_string_value();
+            case token_type::literal_string:
+                return parse_block_scalar(true);
+            case token_type::folded_string:
+                return parse_block_scalar(false);
             case token_type::sequence_start:
                 return parse_flow_sequence();
             case token_type::mapping_start:
@@ -135,6 +139,108 @@ namespace data::yaml::detail
             if (std::holds_alternative<data::parse_error>(result))
                 return std::get<data::parse_error>(result);
             return value::make_string(std::get<string_type>(result));
+        }
+
+        constexpr auto parse_block_scalar(bool literal) noexcept -> std::variant<value, data::parse_error>
+        {
+            const auto &tok = current_token();
+            advance();
+
+            std::string_view raw = tok.value_;
+            if (raw.empty())
+                return value::make_string(string_type{});
+
+            // Find block indentation from first non-blank line
+            std::size_t block_indent = 0;
+            {
+                std::size_t i = 0;
+                while (i < raw.size())
+                {
+                    std::size_t indent = 0;
+                    while (i < raw.size() && raw[i] == ' ')
+                        { ++indent; ++i; }
+                    if (i >= raw.size() || raw[i] == '\n')
+                    {
+                        if (i < raw.size()) ++i;
+                        continue;
+                    }
+                    block_indent = indent;
+                    break;
+                }
+            }
+
+            string_type result{};
+            std::size_t i = 0;
+
+            if (literal)
+            {
+                // Literal (|): preserve newlines, strip common indent
+                bool first_line = true;
+                while (i < raw.size())
+                {
+                    // Strip indentation
+                    std::size_t indent = 0;
+                    while (i < raw.size() && raw[i] == ' ' && indent < block_indent)
+                        { ++indent; ++i; }
+
+                    if (i >= raw.size()) break;
+
+                    // Blank line
+                    if (raw[i] == '\n')
+                    {
+                        result.push_back('\n');
+                        ++i;
+                        continue;
+                    }
+
+                    if (!first_line)
+                        result.push_back('\n');
+                    first_line = false;
+
+                    // Copy line content
+                    while (i < raw.size() && raw[i] != '\n')
+                        result.push_back(raw[i++]);
+                    if (i < raw.size()) ++i; // skip \n
+                }
+            }
+            else
+            {
+                // Folded (>): adjacent non-blank lines joined with space, blank lines become \n
+                bool first_content = true;
+                bool prev_was_blank = false;
+                while (i < raw.size())
+                {
+                    // Strip indentation
+                    std::size_t indent = 0;
+                    while (i < raw.size() && raw[i] == ' ' && indent < block_indent)
+                        { ++indent; ++i; }
+
+                    if (i >= raw.size()) break;
+
+                    // Blank line
+                    if (raw[i] == '\n')
+                    {
+                        if (!first_content)
+                            result.push_back('\n');
+                        prev_was_blank = true;
+                        ++i;
+                        continue;
+                    }
+
+                    // Non-blank line — space-join with previous unless after blank
+                    if (!first_content && !prev_was_blank)
+                        result.push_back(' ');
+                    first_content = false;
+                    prev_was_blank = false;
+
+                    // Copy line content
+                    while (i < raw.size() && raw[i] != '\n')
+                        result.push_back(raw[i++]);
+                    if (i < raw.size()) ++i; // skip \n
+                }
+            }
+
+            return value::make_string(result);
         }
 
         constexpr auto parse_flow_sequence() noexcept -> std::variant<value, data::parse_error>

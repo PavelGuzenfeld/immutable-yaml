@@ -174,3 +174,109 @@ TEST_CASE("yaml: entries() on sequence returns empty range")
 {
     CHECK(seq_doc.entries(seq_doc.root_).size() == 0);
 }
+
+// --- Block scalar tests ---
+
+TEST_CASE("yaml: literal block scalar (|)")
+{
+    constexpr auto doc = parse_or_throw(R"(
+text: |
+  line 1
+  line 2
+  line 3
+)");
+    auto text = doc.find(doc.root_, "text");
+    REQUIRE(text);
+    CHECK(text->is_string());
+    CHECK(text->as_string() == "line 1\nline 2\nline 3");
+}
+
+TEST_CASE("yaml: folded block scalar (>)")
+{
+    constexpr auto doc = parse_or_throw(R"(
+text: >
+  this is a long
+  paragraph that gets
+  folded into one line
+)");
+    auto text = doc.find(doc.root_, "text");
+    REQUIRE(text);
+    CHECK(text->as_string() == "this is a long paragraph that gets folded into one line");
+}
+
+TEST_CASE("yaml: literal block with blank lines")
+{
+    constexpr auto doc = parse_or_throw(R"(
+script: |
+  echo hello
+
+  echo world
+)");
+    auto script = doc.find(doc.root_, "script");
+    REQUIRE(script);
+    CHECK(script->as_string() == "echo hello\n\necho world");
+}
+
+TEST_CASE("yaml: folded block with paragraph break")
+{
+    constexpr auto doc = parse_or_throw(R"(
+desc: >
+  paragraph one
+  continues here
+
+  paragraph two
+  continues here
+)");
+    auto desc = doc.find(doc.root_, "desc");
+    REQUIRE(desc);
+    CHECK(desc->as_string() == "paragraph one continues here\nparagraph two continues here");
+}
+
+TEST_CASE("yaml: block scalar followed by another key")
+{
+    constexpr auto doc = parse_or_throw(R"(
+msg: |
+  hello
+  world
+count: 42
+)");
+    CHECK(doc.find(doc.root_, "msg")->as_string() == "hello\nworld");
+    CHECK(doc.find(doc.root_, "count")->as_int() == 42);
+}
+
+TEST_CASE("yaml: block scalar in nested mapping")
+{
+    constexpr auto doc = parse_or_throw(R"(
+config:
+  script: |
+    step 1
+    step 2
+  name: test
+)");
+    auto config = doc.find(doc.root_, "config");
+    REQUIRE(config);
+    CHECK(doc.find(*config, "script")->as_string() == "step 1\nstep 2");
+    CHECK(doc.find(*config, "name")->as_string() == "test");
+}
+
+TEST_CASE("yaml: empty block scalar")
+{
+    constexpr auto doc = parse_or_throw(R"(
+empty: |
+next: value
+)");
+    CHECK(doc.find(doc.root_, "empty")->as_string() == "");
+    CHECK(doc.find(doc.root_, "next")->as_string() == "value");
+}
+
+TEST_CASE("yaml: block scalar is_valid")
+{
+    static_assert(is_valid(R"(
+key: |
+  content
+)"));
+    static_assert(is_valid(R"(
+key: >
+  content
+)"));
+}

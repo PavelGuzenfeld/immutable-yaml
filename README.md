@@ -218,6 +218,13 @@ ctest --test-dir build --output-on-failure
 
 Tests and examples are only built when `BUILD_TESTING=ON` and the project is the top-level CMake project. Consumers via `FetchContent` or `add_subdirectory` get only the header-only library target.
 
+## Roadmap
+
+- **TOML frontend** — `data::toml::parse()` with the same shared type system
+- **XML frontend** — `data::xml::parse()` for compile-time XML configs
+- **Multi-line YAML strings** — `|` (literal) and `>` (folded) block scalars
+- **YAML anchors/aliases** — `&anchor` and `*alias` support
+
 ## License
 
 MIT

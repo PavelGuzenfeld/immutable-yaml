@@ -45,6 +45,36 @@ namespace data::yaml::detail
 
         constexpr auto parse_value() noexcept -> std::variant<value, data::parse_error>
         {
+            // Handle anchor: &name <value>
+            if (current_token().type_ == token_type::anchor)
+            {
+                auto anchor_name = current_token().value_.substr(1); // strip &
+                advance();
+                // Skip optional tag after anchor
+                if (current_token().type_ == token_type::tag)
+                    advance();
+                auto value_result = parse_value();
+                if (std::holds_alternative<data::parse_error>(value_result))
+                    return value_result;
+                store_anchor(anchor_name, std::get<value>(value_result));
+                return value_result;
+            }
+
+            // Handle alias: *name
+            if (current_token().type_ == token_type::alias)
+            {
+                auto alias_name = current_token().value_.substr(1); // strip *
+                advance();
+                auto *anchored = find_anchor(alias_name);
+                if (!anchored)
+                    return make_error(data::error_code::cyclic_reference);
+                return *anchored;
+            }
+
+            // Skip tags (type hints we don't process)
+            if (current_token().type_ == token_type::tag)
+                advance();
+
             const auto &tok = current_token();
             switch (tok.type_)
             {
@@ -395,9 +425,40 @@ namespace data::yaml::detail
             return value::make_mapping(start, count);
         }
 
+        // --- Anchor/alias storage ---
+        static constexpr std::size_t MAX_ANCHORS = 16;
+
+        struct anchor_entry
+        {
+            string_type name{};
+            value val_{};
+        };
+
+        constexpr void store_anchor(std::string_view name, value const &v) noexcept
+        {
+            for (std::size_t i = 0; i < anchor_count_; ++i)
+                if (anchors_[i].name.view() == name)
+                {
+                    anchors_[i].val_ = v;
+                    return;
+                }
+            if (anchor_count_ < MAX_ANCHORS)
+                anchors_[anchor_count_++] = anchor_entry{string_type{name}, v};
+        }
+
+        constexpr auto find_anchor(std::string_view name) const noexcept -> value const *
+        {
+            for (std::size_t i = 0; i < anchor_count_; ++i)
+                if (anchors_[i].name.view() == name)
+                    return &anchors_[i].val_;
+            return nullptr;
+        }
+
         const token_array<MaxTokens> &tokens_;
         document &doc_;
         std::size_t position_{0};
+        std::array<anchor_entry, MAX_ANCHORS> anchors_{};
+        std::size_t anchor_count_{0};
     };
 
 } // namespace data::yaml::detail
